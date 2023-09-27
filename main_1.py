@@ -179,9 +179,18 @@ class MyWindow(QMainWindow, Ui_MainWindow):
                 start_time = 60
                 end_time = 120
 
+                # 创建一个名为 `self.video_clipper` 的 `VideoClipper` 对象，
+                # 用于执行视频剪辑操作。传递了输入文件路径、输出文件路径以及剪辑的起始和结束时间。
                 self.video_clipper = VideoClipper(input_file, output_file, start_time, end_time)
+
+                # 建立了一个信号-槽连接。progressChanged 信号是 VideoClipper 类中定义的用于传递剪辑进度的信号，
+                # 它连接到了 self.update_progress 方法，以便在剪辑过程中更新进度条。
                 self.video_clipper.progressChanged.connect(self.update_progress)
+                # 建立了一个信号-槽连接。`finished` 信号在剪辑完成时发射，
+                # 连接到了 `self.clip_finished` 方法，以便在剪辑完成时执行相应的操作。
                 self.video_clipper.finished.connect(self.clip_finished)
+
+                # 开始执行视频剪辑，启动了一个新的线程来处理剪辑操作。
                 self.video_clipper.start()
 
     def update_progress(self, progress):
@@ -191,6 +200,8 @@ class MyWindow(QMainWindow, Ui_MainWindow):
         print("剪辑完成")  # 添加这行
         self.clip_rate.setValue(100)
         QMessageBox.information(self, "剪辑完成", "视频剪辑完成", QMessageBox.Ok)
+        self.Process.setEnabled(True)  # 启用处理按钮
+        self.Stop_process.setEnabled(True)  # 启用停止按钮
 
     def update_process_progress(self, progress):
         self.process_rate.setValue(progress)
