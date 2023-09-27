@@ -61,13 +61,13 @@ class Ui_MainWindow(object):
         self.scrollAreaWidgetContents.setGeometry(QtCore.QRect(0, 0, 809, 699))
         self.scrollAreaWidgetContents.setObjectName("scrollAreaWidgetContents")
         self.scrollArea.setWidget(self.scrollAreaWidgetContents)
-        self.widget = QtWidgets.QWidget(self.centralwidget)
-        self.widget.setGeometry(QtCore.QRect(63, 113, 184, 229))
-        self.widget.setObjectName("widget")
-        self.verticalLayout = QtWidgets.QVBoxLayout(self.widget)
+        self.layoutWidget = QtWidgets.QWidget(self.centralwidget)
+        self.layoutWidget.setGeometry(QtCore.QRect(63, 113, 184, 229))
+        self.layoutWidget.setObjectName("layoutWidget")
+        self.verticalLayout = QtWidgets.QVBoxLayout(self.layoutWidget)
         self.verticalLayout.setContentsMargins(0, 0, 0, 0)
         self.verticalLayout.setObjectName("verticalLayout")
-        self.Auto_cut = QtWidgets.QPushButton(self.widget)
+        self.Auto_cut = QtWidgets.QPushButton(self.layoutWidget)
         self.Auto_cut.setStyleSheet("QPushButton\n"
 "{\n"
 "    color:#ffffff; /*文字颜色*/\n"
@@ -98,7 +98,7 @@ class Ui_MainWindow(object):
 "}")
         self.Auto_cut.setObjectName("Auto_cut")
         self.verticalLayout.addWidget(self.Auto_cut)
-        self.Process = QtWidgets.QPushButton(self.widget)
+        self.Process = QtWidgets.QPushButton(self.layoutWidget)
         self.Process.setStyleSheet("QPushButton\n"
 "{\n"
 "    color:#ffffff; /*文字颜色*/\n"
@@ -129,7 +129,7 @@ class Ui_MainWindow(object):
 "}")
         self.Process.setObjectName("Process")
         self.verticalLayout.addWidget(self.Process)
-        self.Stop_process = QtWidgets.QPushButton(self.widget)
+        self.Stop_process = QtWidgets.QPushButton(self.layoutWidget)
         self.Stop_process.setMaximumSize(QtCore.QSize(171, 16777215))
         self.Stop_process.setStyleSheet("QPushButton\n"
 "{\n"
@@ -161,7 +161,7 @@ class Ui_MainWindow(object):
 "}")
         self.Stop_process.setObjectName("Stop_process")
         self.verticalLayout.addWidget(self.Stop_process)
-        self.Select_image = QtWidgets.QPushButton(self.widget)
+        self.Select_image = QtWidgets.QPushButton(self.layoutWidget)
         self.Select_image.setStyleSheet("QPushButton\n"
 "{\n"
 "    color:#ffffff; /*文字颜色*/\n"
@@ -192,7 +192,7 @@ class Ui_MainWindow(object):
 "}")
         self.Select_image.setObjectName("Select_image")
         self.verticalLayout.addWidget(self.Select_image)
-        self.Present_images = QtWidgets.QPushButton(self.widget)
+        self.Present_images = QtWidgets.QPushButton(self.layoutWidget)
         self.Present_images.setStyleSheet("QPushButton\n"
 "{\n"
 "    color:#ffffff; /*文字颜色*/\n"
@@ -223,6 +223,51 @@ class Ui_MainWindow(object):
 "}")
         self.Present_images.setObjectName("Present_images")
         self.verticalLayout.addWidget(self.Present_images)
+        self.clip_rate = QtWidgets.QProgressBar(self.centralwidget)
+        self.clip_rate.setGeometry(QtCore.QRect(70, 540, 211, 23))
+        self.clip_rate.setStyleSheet("QProgressBar::chunk\n"
+"{\n"
+"border-radius:11px;\n"
+"background:qlineargradient(spread:pad,x1:0,y1:0,x2:1,y2:0,stop:0 #01FAFF,stop:1  #26B4FF);\n"
+"}\n"
+"QProgressBar#progressBar\n"
+"{\n"
+"height:22px;\n"
+"text-align:center;/*文本位置*/\n"
+"font-size:14px;\n"
+"color:white;\n"
+"border-radius:11px;\n"
+"background: #1D5573 ;\n"
+"}")
+        self.clip_rate.setProperty("value", 24)
+        self.clip_rate.setObjectName("clip_rate")
+        self.process_rate = QtWidgets.QProgressBar(self.centralwidget)
+        self.process_rate.setGeometry(QtCore.QRect(70, 440, 211, 23))
+        self.process_rate.setStyleSheet("QProgressBar::chunk\n"
+"{\n"
+"border-radius:11px;\n"
+"background:qlineargradient(spread:pad,x1:0,y1:0,x2:1,y2:0,stop:0 #01FAFF,stop:1  #26B4FF);\n"
+"}\n"
+"QProgressBar#progressBar\n"
+"{\n"
+"height:22px;\n"
+"text-align:center;/*文本位置*/\n"
+"font-size:14px;\n"
+"color:white;\n"
+"border-radius:11px;\n"
+"background: #1D5573 ;\n"
+"}")
+        self.process_rate.setProperty("value", 24)
+        self.process_rate.setObjectName("process_rate")
+        self.label_2 = QtWidgets.QLabel(self.centralwidget)
+        self.label_2.setGeometry(QtCore.QRect(60, 400, 221, 21))
+        self.label_2.setStyleSheet("self.setStyleSheet(\"QLabel{background:white;}\"\n"
+"                   \"QLabel{color:rgb(100,100,100,250);font-size:15px;font-weight:bold;font-family:Roman times;}\"\n"
+"                   \"QLabel:hover{color:rgb(100,100,100,120);}\")")
+        self.label_2.setObjectName("label_2")
+        self.label_3 = QtWidgets.QLabel(self.centralwidget)
+        self.label_3.setGeometry(QtCore.QRect(70, 500, 201, 16))
+        self.label_3.setObjectName("label_3")
         MainWindow.setCentralWidget(self.centralwidget)
         self.menubar = QtWidgets.QMenuBar(MainWindow)
         self.menubar.setGeometry(QtCore.QRect(0, 0, 1126, 26))
@@ -250,5 +295,7 @@ class Ui_MainWindow(object):
         self.Stop_process.setText(_translate("MainWindow", "Stop processing"))
         self.Select_image.setText(_translate("MainWindow", "Select meaningless frame"))
         self.Present_images.setText(_translate("MainWindow", "Present the images"))
+        self.label_2.setText(_translate("MainWindow", "<html><head/><body><p align=\"center\"><span style=\" font-weight:600; color:#aa55ff;\">处理进度</span></p></body></html>"))
+        self.label_3.setText(_translate("MainWindow", "<html><head/><body><p align=\"center\"><span style=\" font-weight:600; color:#aa55ff;\">剪辑进度</span></p></body></html>"))
         self.menu.setTitle(_translate("MainWindow", "文件"))
         self.actionOpen_file.setText(_translate("MainWindow", "Open file"))
