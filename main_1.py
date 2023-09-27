@@ -41,6 +41,7 @@ class VideoClipper(QThread):
                 break
             if output:
                 progress = self.parse_progress(output)
+                # 在 VideoClipper 类中定义的信号 progressChanged 被发射的语句。
                 self.progressChanged.emit(progress)
 
         process.communicate()
@@ -50,6 +51,10 @@ class VideoClipper(QThread):
         # 在这里解析 FFmpeg 输出的进度信息
         # 这可能需要根据实际情况进行定制
         pass
+
+class ImagePresent(QThread):
+    finished = pyqtSignal()
+    progressChanged = pyqtSignal(int)
 
 # 一个名为 VideoProcessor 的类，继承自 QThread，用于处理视频
 class VideoProcessor(QThread):
