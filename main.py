@@ -26,12 +26,12 @@ class VideoClipper(QThread):
         #将传入的 file_path 参数保存为对象的属性，以便在后续的方法中可以访问到
         self.file_path = file_path
 
-    #这是 QThread 类的一个重要方法。当线程开始运行时，它会调用这个方法
+    # 这是 QThread 类的一个重要方法。当线程开始运行时，它会调用这个方法
     def run(self):
         start_time = 240
         end_time = 260
 
-        #创建了一个列表 command，其中包含了一个 FFmpeg 命令的参数。这个命令将剪辑从 self.file_path 指定的视频文件，
+        # 创建了一个列表 command，其中包含了一个 FFmpeg 命令的参数。这个命令将剪辑从 self.file_path 指定的视频文件，
         # 并从 xx 秒处剪辑到 xx 秒处，然后将结果保存为 output_video.avi
         command = [
             'ffmpeg',
@@ -41,7 +41,7 @@ class VideoClipper(QThread):
             'output_video.avi'
         ]
 
-        #使用 subprocess 模块创建了一个新的进程，
+        # 使用 subprocess 模块创建了一个新的进程，
         # 运行了 FFmpeg 命令。stdout=subprocess.PIPE 和 stderr=subprocess.PIPE
         # 表示将子进程的标准输出和标准错误输出捕获到管道中
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -52,16 +52,16 @@ class VideoClipper(QThread):
                 break
             if output:
 
-                #调用了一个尚未定义的方法 parse_progress，用于解析视频剪辑的进度信息
+                # 调用了一个尚未定义的方法 parse_progress，用于解析视频剪辑的进度信息
                 progress = self.parse_progress(output)
 
-                #发射了 progressChanged 信号，将解析得到的进度作为参数传递给信号的接收者
+                # 发射了 progressChanged 信号，将解析得到的进度作为参数传递给信号的接收者
                 self.progressChanged.emit(progress)
-        #等待子进程结束，并确保所有的输出都被处理
+        # 等待子进程结束，并确保所有的输出都被处理
         process.communicate()
-        #发射了 finished 信号，表示视频剪辑已完成
+        # 发射了 finished 信号，表示视频剪辑已完成
         self.finished.emit()
-#一个名为 VideoProcessor 的类，继承自 QThread，用于处理视频
+# 一个名为 VideoProcessor 的类，继承自 QThread，用于处理视频
 class VideoProcessor(QThread):
     finished = pyqtSignal()
     progressChanged = pyqtSignal(int)
@@ -85,43 +85,43 @@ class VideoProcessor(QThread):
         else:
             os.makedirs(folder_path)
 
-        #初始化一个变量 prev_frame，用于存储前一帧的灰度图像
+        # 初始化一个变量 prev_frame，用于存储前一帧的灰度图像
         prev_frame = None
 
-        #初始化一个变量 frame_count，用于记录处理的帧数
+        # 初始化一个变量 frame_count，用于记录处理的帧数
         frame_count = 0
 
-        #进入一个无限循环，开始处理视频帧
+        # 进入一个无限循环，开始处理视频帧
         while True:
-            #读取视频的一帧，ret 表示是否成功读取，frame 是读取到的帧
+            # 读取视频的一帧，ret 表示是否成功读取，frame 是读取到的帧
             ret, frame = cap.read()
             if not ret:
                 break
 
-            #帧数加一
+            # 帧数加一
             frame_count += 1
 
-            #每处理 100 帧执行一次以下操作
+            # 每处理 100 帧执行一次以下操作
             if frame_count % 100 == 0:
 
-                #将彩色帧转换为灰度图像。
+                # 将彩色帧转换为灰度图像。
                 gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-                #如果前一帧为空（第一帧），将当前帧赋给 prev_frame 并继续下一轮循环
+                # 如果前一帧为空（第一帧），将当前帧赋给 prev_frame 并继续下一轮循环
                 if prev_frame is None:
                     prev_frame = gray_frame
                     continue
 
-                #计算前一帧和当前帧的差异
+                # 计算前一帧和当前帧的差异
                 diff = cv2.absdiff(prev_frame, gray_frame)
 
-                #设置一个阈值
+                # 设置一个阈值
                 threshold = 100
 
-                #对差异进行二值化处理
+                # 对差异进行二值化处理
                 _, thresholded_diff = cv2.threshold(diff, threshold, 255, cv2.THRESH_BINARY)
 
-                #如果二值化后的差异中非零像素超过 1000 个
+                # 如果二值化后的差异中非零像素超过 1000 个
                 if cv2.countNonZero(thresholded_diff) > 1000:
                     self.progressChanged.emit(frame_count)
                     #构造保存图片的路径。
@@ -131,9 +131,9 @@ class VideoProcessor(QThread):
                     cv2.imwrite(image_path, frame)
                     print(f"保存图片：{image_path}")
 
-                #更新前一帧
+                # 更新前一帧
                 prev_frame = gray_frame
-        #释放视频对象
+        # 释放视频对象
         cap.release()
         self.finished.emit()
 

@@ -225,6 +225,10 @@ class Ui_MainWindow(object):
         self.verticalLayout.addWidget(self.Present_images)
         self.clip_rate = QtWidgets.QProgressBar(self.centralwidget)
         self.clip_rate.setGeometry(QtCore.QRect(70, 540, 211, 23))
+        font = QtGui.QFont()
+        font.setBold(False)
+        font.setWeight(50)
+        self.clip_rate.setFont(font)
         self.clip_rate.setStyleSheet("QProgressBar::chunk\n"
 "{\n"
 "border-radius:11px;\n"
@@ -239,7 +243,8 @@ class Ui_MainWindow(object):
 "border-radius:11px;\n"
 "background: #1D5573 ;\n"
 "}")
-        self.clip_rate.setProperty("value", 24)
+        self.clip_rate.setProperty("value", 0)
+        self.clip_rate.setTextVisible(True)
         self.clip_rate.setObjectName("clip_rate")
         self.process_rate = QtWidgets.QProgressBar(self.centralwidget)
         self.process_rate.setGeometry(QtCore.QRect(70, 440, 211, 23))
@@ -257,7 +262,7 @@ class Ui_MainWindow(object):
 "border-radius:11px;\n"
 "background: #1D5573 ;\n"
 "}")
-        self.process_rate.setProperty("value", 24)
+        self.process_rate.setProperty("value", 0)
         self.process_rate.setObjectName("process_rate")
         self.label_2 = QtWidgets.QLabel(self.centralwidget)
         self.label_2.setGeometry(QtCore.QRect(60, 400, 221, 21))
