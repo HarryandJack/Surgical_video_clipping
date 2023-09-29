@@ -1,83 +1,67 @@
-import sys
+from __future__ import print_function
 import os
-from PyQt5.QtCore import *
-from PyQt5.QtGui import *
-from PyQt5.QtWidgets import *
 
-from PyQt5.uic import loadUi
+import scenedetect
+from scenedetect.video_manager import VideoManager
+from scenedetect.scene_manager import SceneManager
+from scenedetect.frame_timecode import FrameTimecode
+from scenedetect.stats_manager import StatsManager
+from scenedetect.detectors import ContentDetector
 
+STATS_FILE_PATH = 'testvideo.stats.csv'
 
-class Picture(QMainWindow):
-    def __init__(self, parent=None, url=None):
-        super().__init__(parent)
-        self.url = url
-        self.ui()
+def main():
+    # Create a video_manager point to video file testvideo.mp4. Note that multiple
+    # videos can be appended by simply specifying more file paths in the list
+    # passed to the VideoManager constructor. Note that appending multiple videos
+    # requires that they all have the same frame size, and optionally, framerate.
+    video_manager = VideoManager(['testvideo.mp4'])
+    stats_manager = StatsManager()
+    scene_manager = SceneManager(stats_manager)
+    # Add ContentDetector algorithm (constructor takes detector options like threshold).
+    scene_manager.add_detector(ContentDetector())
+    base_timecode = video_manager.get_base_timecode()
 
-    def ui(self):
-        loadUi('./show_pic.ui', self)
+    try:
+        # If stats file exists, load it.
+        if os.path.exists(STATS_FILE_PATH):
+            # Read stats from CSV file opened in read mode:
+            with open(STATS_FILE_PATH, 'r') as stats_file:
+                stats_manager.load_from_csv(stats_file, base_timecode)
 
-        self.setFixedSize(850, 600)
+        start_time = base_timecode + 20     # 00:00:00.667
+        end_time = base_timecode + 20.0     # 00:00:20.000
+        # Set video_manager duration to read frames from 00:00:00 to 00:00:20.
+        video_manager.set_duration(start_time=start_time, end_time=end_time)
 
-        total = len(self.url)
+        # Set downscale factor to improve processing speed.
+        video_manager.set_downscale_factor()
 
-        self.qw = QWidget()
-        if total % 5 == 0:
-            rows = int(total / 5)
-        else:
-            rows = int(total / 5) + 1
-        self.qw.setMinimumSize(850, 230 * rows)
-        for i in range(total):
+        # Start video_manager.
+        video_manager.start()
 
-            photo = QPixmap(url[i])
-            # print('photo:',photo)
-            # photo.loadFromData(req.content)
-            width = photo.width()
-            height = photo.height()
-            print('width:', width, '      ', 'height:', height)
+        # Perform scene detection on video_manager.
+        scene_manager.detect_scenes(frame_source=video_manager)
 
-            if width == 0 or height == 0:
-                continue
-            tmp_image = photo.toImage()  # 将QPixmap对象转换为QImage对象
-            size = QSize(width, height)
-            # photo.convertFromImage(tmp_image.scaled(size, Qt.IgnoreAspectRatio))
-            photo = photo.fromImage(tmp_image.scaled(size, Qt.IgnoreAspectRatio))
-            tmp = QWidget(self.qw)
+        # Obtain list of detected scenes.
+        scene_list = scene_manager.get_scene_list(base_timecode)
+        # Like FrameTimecodes, each scene in the scene_list can be sorted if the
+        # list of scenes becomes unsorted.
 
-            vl = QVBoxLayout()
+        print('List of scenes obtained:')
+        for i, scene in enumerate(scene_list):
+            print('    Scene %2d: Start %s / Frame %d, End %s / Frame %d' % (
+                i+1,
+                scene[0].get_timecode(), scene[0].get_frames(),
+                scene[1].get_timecode(), scene[1].get_frames(),))
 
-            # 为每个图片设置QLabel容器
-            label = QLabel()
-            label.setFixedSize(150, 200)
-            label.setStyleSheet("border:1px solid gray")
-            label.setPixmap(photo)
-            label.setScaledContents(True)  # 图像自适应窗口大小
+        # We only write to the stats file if a save is required:
+        if stats_manager.is_save_required():
+            with open(STATS_FILE_PATH, 'w') as stats_file:
+                stats_manager.save_to_csv(stats_file, base_timecode)
 
-            vl.addWidget(label)
+    finally:
+        video_manager.release()
 
-            tmp.setLayout(vl)
-            tmp.move(160 * (i % 5), 230 * int(i / 5))
-
-        self.scrollArea.setWidget(self.qw)  # 和ui文件中名字相同
-
-
-if __name__ == '__main__':
-    app = QApplication(sys.argv)
-    # 这是我的文件夹中图片的路径
-    folder_path = 'C:\\Users\\yienk\\PycharmProjects\\pythonProject2\\images'
-
-
-    # 初始化一个空列表来存储文件路径
-    url = []
-
-    # 遍历文件夹
-    for root, dirs, files in os.walk(folder_path):
-        for file_name in files:
-            # 获取文件的完整路径
-            file_path = os.path.join(root, file_name)
-
-            # 将路径添加到url列表中
-            url.append(file_path)
-
-    pic = Picture(url=url[:])
-    pic.show()
-    sys.exit(app.exec_())
+if __name__ == "__main__":
+    main()

@@ -1,14 +1,20 @@
 import sys
 import cv2
-from PyQt5.QtWidgets import QApplication, QMainWindow, QFileDialog, QMessageBox, QLabel, QSpacerItem, QSizePolicy, QDialog
+from PyQt5.QtWidgets import QApplication, QMainWindow, QFileDialog, QMessageBox,QProgressBar ,QLabel, QSpacerItem, QSizePolicy, QDialog, QVBoxLayout, QWidget
 from demo import Ui_MainWindow
 import os
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtCore import pyqtSignal, pyqtSlot, QThread
 from PyQt5.uic import loadUi
 import subprocess
+import scenedetect
+from scenedetect import VideoManager
+from scenedetect.scene_manager import SceneManager
+from scenedetect.frame_timecode import FrameTimecode
+from moviepy.video.io.ffmpeg_tools import ffmpeg_extract_subclip
+from moviepy.video.io.VideoFileClip import VideoFileClip
 
-# 定义了一个名为 VideoClipper 的类，它继承自 QThread，这是 PyQt 框架中用于创建线程的基类
+# 定义了一个名为 VideoClipper 的类，它继承自 QThread，这是 PyQt 框架中用于创建线程的基类/
 class VideoClipper(QThread):
 
     # 用于创建一个信号（signal），当视频剪辑完成时会发射这个信号
@@ -18,123 +24,69 @@ class VideoClipper(QThread):
     progressChanged = pyqtSignal(int)
 
     # 这是 VideoClipper 类的构造函数。它接受一个参数 file_path，表示要剪辑的视频文件的路径
-    def __init__(self, file_path):
-
-        # 调用了父类 QThread 的构造函数，初始化了线程
+    def __init__(self, file_path, output_file, start_time, end_time):
         super().__init__()
+        self.input_file = file_path
+        self.output_file = output_file
+        self.start_time = start_time
+        self.end_time = end_time
 
-        #将传入的 file_path 参数保存为对象的属性，以便在后续的方法中可以访问到
-        self.file_path = file_path
-
-    # 这是 QThread 类的一个重要方法。当线程开始运行时，它会调用这个方法
     def run(self):
-        start_time = 240
-        end_time = 260
+        # 通过 moviepy 库的 VideoFileClip 类加载了输入的视频文件 (self.input_file)。这一行将视频文件加载到一个变量 video_clip 中
+        video_clip = VideoFileClip(self.input_file)
 
-        # 创建了一个列表 command，其中包含了一个 FFmpeg 命令的参数。这个命令将剪辑从 self.file_path 指定的视频文件，
-        # 并从 xx 秒处剪辑到 xx 秒处，然后将结果保存为 output_video.avi
-        command = [
-            'ffmpeg',
-            '-i', self.file_path,
-            '-ss', str(start_time),
-            '-to', str(end_time),
-            'output_video.avi'
-        ]
+        # Calculate start and end times in seconds
+        start_time_seconds = self.start_time
+        end_time_seconds = self.end_time
 
-        # 使用 subprocess 模块创建了一个新的进程，
-        # 运行了 FFmpeg 命令。stdout=subprocess.PIPE 和 stderr=subprocess.PIPE
-        # 表示将子进程的标准输出和标准错误输出捕获到管道中
-        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        #用于监视子进程的输出
-        while True:
-            output = process.stderr.readline()
-            if process.poll() is not None:
-                break
-            if output:
+        # Define the output file path
+        output_file_path = self.output_file
 
-                # 调用了一个尚未定义的方法 parse_progress，用于解析视频剪辑的进度信息
-                progress = self.parse_progress(output)
+        # 用于从输入的视频文件中截取一个子片段。具体来说，它接受输入文件路径、开始时间（以秒为单位）、结束时间（以秒为单位）和目标文件路径作为参数。截取后的视频将保存在目标文件路径 (output_file_path)
+        ffmpeg_extract_subclip(self.input_file, start_time_seconds, end_time_seconds, targetname=output_file_path)
 
-                # 发射了 progressChanged 信号，将解析得到的进度作为参数传递给信号的接收者
-                self.progressChanged.emit(progress)
-        # 等待子进程结束，并确保所有的输出都被处理
-        process.communicate()
-        # 发射了 finished 信号，表示视频剪辑已完成
+        # 一旦视频截取完成，发射了一个自定义的信号 finished，这个信号可以被其他部分的代码捕获并进行相应的处理。
         self.finished.emit()
+
+class ImagePresent(QThread):
+    finished = pyqtSignal()
+    progressChanged = pyqtSignal(int)
+
 # 一个名为 VideoProcessor 的类，继承自 QThread，用于处理视频
 class VideoProcessor(QThread):
     finished = pyqtSignal()
     progressChanged = pyqtSignal(int)
+
     def __init__(self, file_path):
-        #调用了父类 QThread 的构造函数，初始化了线程
         super().__init__()
-        #构造函数接受一个参数 file_path，表示要处理的视频文件的路径
         self.file_path = file_path
 
     def run(self):
-        #使用 OpenCV 的 cv2.VideoCapture() 方法打开视频文件
-        cap = cv2.VideoCapture(self.file_path)
-        #设置一个文件夹路径，用于存储处理后的图片
-        folder_path = 'images'
+        # Create a video manager and a scene manager.
+        video_manager = scenedetect.VideoManager([self.file_path])
+        scene_manager = scenedetect.SceneManager()
 
-        # 如果文件夹存在，则删除其中的所有文件
-        if os.path.exists(folder_path):
-            for filename in os.listdir(folder_path):
-                file_path = os.path.join(folder_path, filename)
-                os.remove(file_path)
-        else:
-            os.makedirs(folder_path)
+        # Add a detector (ContentDetector) to the scene manager.
+        scene_manager.add_detector(scenedetect.detectors.ContentDetector())
 
-        # 初始化一个变量 prev_frame，用于存储前一帧的灰度图像
-        prev_frame = None
+        try:
+            video_manager.set_downscale_factor()
+            video_manager.start()
+            scene_manager.detect_scenes(frame_source=video_manager)
 
-        # 初始化一个变量 frame_count，用于记录处理的帧数
-        frame_count = 0
+            for i, scene in enumerate(scene_manager.get_scene_list()):
+                start_frame, end_frame = scene
 
-        # 进入一个无限循环，开始处理视频帧
-        while True:
-            # 读取视频的一帧，ret 表示是否成功读取，frame 是读取到的帧
-            ret, frame = cap.read()
-            if not ret:
-                break
-
-            # 帧数加一
-            frame_count += 1
-
-            # 每处理 100 帧执行一次以下操作
-            if frame_count % 100 == 0:
-
-                # 将彩色帧转换为灰度图像。
-                gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-
-                # 如果前一帧为空（第一帧），将当前帧赋给 prev_frame 并继续下一轮循环
-                if prev_frame is None:
-                    prev_frame = gray_frame
-                    continue
-
-                # 计算前一帧和当前帧的差异
-                diff = cv2.absdiff(prev_frame, gray_frame)
-
-                # 设置一个阈值
-                threshold = 100
-
-                # 对差异进行二值化处理
-                _, thresholded_diff = cv2.threshold(diff, threshold, 255, cv2.THRESH_BINARY)
-
-                # 如果二值化后的差异中非零像素超过 1000 个
-                if cv2.countNonZero(thresholded_diff) > 1000:
+                if end_frame - start_frame >= 100:  # Only process scenes longer than 100 frames.
+                    frame_count = (start_frame + end_frame) // 2
                     self.progressChanged.emit(frame_count)
-                    #构造保存图片的路径。
-                    image_path = f"images/frame_{frame_count}.jpg"
 
-                    #将当前帧保存为图片
-                    cv2.imwrite(image_path, frame)
-                    print(f"保存图片：{image_path}")
+                    # Process the frames here (e.g., save images).
+                    # ...
 
-                # 更新前一帧
-                prev_frame = gray_frame
-        # 释放视频对象
-        cap.release()
+        finally:
+            video_manager.release()
+
         self.finished.emit()
 
 class MyWindow(QMainWindow, Ui_MainWindow):
@@ -147,8 +99,6 @@ class MyWindow(QMainWindow, Ui_MainWindow):
         self.file_path = None
         self.video_processor = None
         self.Auto_cut.clicked.connect(self.clip_video)
-        self.video_processor.progressChanged.connect(self.update_process_progress)
-        self.video_clipper.progressChanged.connect(self.update_clip_progress)
 
 
     def open_file_dialog(self):
@@ -183,22 +133,40 @@ class MyWindow(QMainWindow, Ui_MainWindow):
             self.video_processor.terminate()
 
     def clip_video(self):
-        if self.file_path:
-            self.video_clipper = VideoClipper(self.file_path)
-            self.video_clipper.finished.connect(self.clip_finished)
-            self.video_clipper.start()
+        input_file = self.file_path
+        if input_file:
+            output_file, _ = QFileDialog.getSaveFileName(None, "Save Video File", "",
+                                                         "Video Files (*.mp4);;All Files (*)")
+            if output_file:
+                start_time = 60
+                end_time = 120
 
-        else:
-            QMessageBox.warning(None, "剪辑失败", "未选择文件或文件无效", QMessageBox.Ok)
+                # 创建一个名为 `self.video_clipper` 的 `VideoClipper` 对象，
+                # 用于执行视频剪辑操作。传递了输入文件路径、输出文件路径以及剪辑的起始和结束时间。
+                self.video_clipper = VideoClipper(input_file, output_file, start_time, end_time)
+
+                # 建立了一个信号-槽连接。progressChanged 信号是 VideoClipper 类中定义的用于传递剪辑进度的信号，
+                # 它连接到了 self.update_progress 方法，以便在剪辑过程中更新进度条。
+                self.video_clipper.progressChanged.connect(self.update_progress)
+                # 建立了一个信号-槽连接。`finished` 信号在剪辑完成时发射，
+                # 连接到了 `self.clip_finished` 方法，以便在剪辑完成时执行相应的操作。
+                self.video_clipper.finished.connect(self.clip_finished)
+
+                # 开始执行视频剪辑，启动了一个新的线程来处理剪辑操作。
+                self.video_clipper.start()
+
+    def update_progress(self, progress):
+        self.clip_rate.setValue(progress)
 
     def clip_finished(self):
-        QMessageBox.information(None, "剪辑完成", "视频剪辑完成", QMessageBox.Ok)
+        print("剪辑完成")  # 添加这行
+        self.clip_rate.setValue(100)
+        QMessageBox.information(self, "剪辑完成", "视频剪辑完成", QMessageBox.Ok)
+        self.Process.setEnabled(True)  # 启用处理按钮
+        self.Stop_process.setEnabled(True)  # 启用停止按钮
 
     def update_process_progress(self, progress):
         self.process_rate.setValue(progress)
-
-    def update_clip_progress(self, progress):
-        self.clip_rate.setValue(progress)
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
