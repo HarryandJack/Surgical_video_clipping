@@ -1,7 +1,7 @@
 import sys
 import cv2
-from PyQt5.QtWidgets import QApplication, QMainWindow, QFileDialog, QMessageBox,QProgressBar ,QLabel, QSpacerItem, QSizePolicy, QDialog, QVBoxLayout, QWidget
-from PyQt5.QtWidgets import QFileDialog, QLabel
+from PyQt5.QtWidgets import QApplication, QMainWindow, QMessageBox,QProgressBar, QSpacerItem, QSizePolicy, QDialog, QVBoxLayout, QWidget
+from PyQt5.QtWidgets import QFileDialog, QLabel, QGridLayout
 from PyQt5.QtGui import QPixmap
 from demo import Ui_MainWindow
 from scenedetect.video_splitter import split_video_ffmpeg
@@ -136,6 +136,16 @@ class MyWindow(QMainWindow, Ui_MainWindow):
         self.Manual_cut.clicked.connect(self.clip_video)
         self.Present_images.clicked.connect(self.present_images)
 
+    def count_images_in_folder(self, folder_path):
+        # 获取指定文件夹内的所有文件和子目录
+        files = os.listdir(folder_path)
+
+        # 使用列表推导式筛选出所有以 '.jpg' 或 '.png' 结尾的文件
+        images = [f for f in files if f.endswith('.jpg') or f.endswith('.png')]
+
+        # 返回图片数量
+        return len(images)
+
     def present_images(self):
         try:
             options = QFileDialog.Options()
@@ -143,20 +153,23 @@ class MyWindow(QMainWindow, Ui_MainWindow):
 
             folder_path = QFileDialog.getExistingDirectory(None, "Select Folder", options=options)
 
-            if folder_path:
-                layout = QVBoxLayout()  # 创建一个垂直布局
+            image_count = self.count_images_in_folder(folder_path)
+            print(f'The folder contains {image_count} images')
 
-                for filename in os.listdir(folder_path):
+            if folder_path:
+                widget = QWidget()  # 创建一个widget作为容器
+                layout = QGridLayout(widget)  # 创建一个网格布局
+
+                for i, filename in enumerate(os.listdir(folder_path)):
                     if filename.endswith('.jpg') or filename.endswith('.png'):
                         image_path = os.path.join(folder_path, filename)
                         label = QLabel()
                         pixmap = QPixmap(image_path)
+                        pixmap = pixmap.scaledToWidth(150)  # 设置图片宽度为150像素，高度等比例缩放
                         label.setPixmap(pixmap)
                         label.setAlignment(Qt.AlignCenter)
-                        layout.addWidget(label)  # 将label添加到布局中
+                        layout.addWidget(label, i // 5, i % 5)  # 将label添加到布局中
 
-                widget = QWidget()  # 创建一个widget作为容器
-                widget.setLayout(layout)  # 将布局设置给widget
                 self.ScrollArea.setWidget(widget)  # 将widget设置为滚动区域的子部件
 
         except Exception as e:
