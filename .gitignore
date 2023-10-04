@@ -3,3 +3,5 @@ __pycache__/
 images/
 output_video.avi
 video_*/
+video/
+
