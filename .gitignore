@@ -2,3 +2,6 @@ __pycache__/
 .idea/
 images/
 output_video.avi
+video_*/
+video/
+venv
