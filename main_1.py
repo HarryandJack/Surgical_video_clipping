@@ -1,13 +1,13 @@
 import sys
 import cv2
 from PyQt5.QtWidgets import QApplication, QMainWindow, QFileDialog, QMessageBox,QProgressBar ,QLabel, QSpacerItem, QSizePolicy, QDialog, QVBoxLayout, QWidget
+from PyQt5.QtWidgets import QFileDialog, QLabel
+from PyQt5.QtGui import QPixmap
 from demo import Ui_MainWindow
 from scenedetect.video_splitter import split_video_ffmpeg
 import os
 from PyQt5.QtGui import QPixmap
-from PyQt5.QtCore import pyqtSignal, pyqtSlot, QThread
-from PyQt5.uic import loadUi
-import subprocess
+from PyQt5.QtCore import pyqtSignal, pyqtSlot, QThread, Qt
 import scenedetect
 from scenedetect import open_video, ContentDetector, SceneManager
 from scenedetect.stats_manager import StatsManager
@@ -50,23 +50,43 @@ class VideoClipper(QThread):
         # 一旦视频截取完成，发射了一个自定义的信号 finished，这个信号可以被其他部分的代码捕获并进行相应的处理。
         self.finished.emit()
 
-class ImagePresent(QThread):
-    finished = pyqtSignal()
-    progressChanged = pyqtSignal(int)
 
 # 一个名为 VideoProcessor 的类，继承自 QThread，用于处理视频
 class VideoProcessor(QThread):
     finished = pyqtSignal()
     progressChanged = pyqtSignal(int)
 
-    def __init__(self, file_path, csv_path):  # 添加 csv_path 参数
+    def __init__(self, file_path, csv_path):
         super().__init__()
         self.file_path = file_path
-        self.csv_path = csv_path  # 存储传递进来的 csv_path
+        self.csv_path = csv_path
 
+    def capture_representative_frame(self, video_path):
+        if not os.path.exists(os.path.join(video_path, 'images')):
+            os.makedirs(os.path.join(video_path, 'images'))
+
+        for filename in os.listdir(video_path):
+            if filename.endswith('.mp4') or filename.endswith('.avi'):
+                video_file_path = os.path.join(video_path, filename)
+
+                cap = cv2.VideoCapture(video_file_path)
+                if not cap.isOpened():
+                    print(f"无法打开视频文件 {filename}")
+                    continue
+
+                total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+                ret, frame = cap.read()
+                if not ret:
+                    print(f"无法读取视频帧 {filename}")
+                    continue
+
+                image_path = os.path.join(video_path, 'images', f'{filename}_frame.jpg')
+                cv2.imwrite(image_path, frame)
+
+                cap.release()
 
     def run(self):
-        # scenes 是一个列表，其中包含了从视频中检测到的场景信息,每个场景被表示为一个元组，包含了两个时间码对象，分别是 start_timecode 和 end_timecode
         video = open_video(self.file_path)
 
         scene_manager = SceneManager(stats_manager=StatsManager())
@@ -81,19 +101,25 @@ class VideoProcessor(QThread):
 
         scene_ranges = [(start_frame, end_frame) for start_frame, end_frame in scene_list]
 
-        output_directory = os.path.join(os.getcwd(), 'images')  # Output directory: current working directory/images
+        output_directory_base = 'video'
+        output_directory = output_directory_base
+        suffix = 1
 
-        if not os.path.exists(output_directory):
-            os.makedirs(output_directory)
+        while os.path.exists(output_directory):
+            suffix += 1
+            output_directory = f'{output_directory_base}_{suffix}'
+
+        os.makedirs(output_directory)
 
         output_file_template = os.path.join(output_directory, '$VIDEO_NAME-Scene-$SCENE_NUMBER.mp4')
 
         split_video_ffmpeg(self.file_path, scene_ranges, output_file_template=output_file_template)
 
-        STATS_FILE_PATH = self.csv_path  # 使用传递进来的 csv_path
-
-        # Save per-frame statistics to disk.
+        STATS_FILE_PATH = self.csv_path
         scene_manager.stats_manager.save_to_csv(csv_file=STATS_FILE_PATH)
+
+        video_path = output_directory
+        self.capture_representative_frame(video_path)
 
         self.finished.emit()
 
@@ -108,8 +134,33 @@ class MyWindow(QMainWindow, Ui_MainWindow):
         self.file_path = None
         self.video_processor = None
         self.Manual_cut.clicked.connect(self.clip_video)
+        self.Present_images.clicked.connect(self.present_images)
 
+    def present_images(self):
+        try:
+            options = QFileDialog.Options()
+            options |= QFileDialog.ShowDirsOnly
 
+            folder_path = QFileDialog.getExistingDirectory(None, "Select Folder", options=options)
+
+            if folder_path:
+                layout = QVBoxLayout()  # 创建一个垂直布局
+
+                for filename in os.listdir(folder_path):
+                    if filename.endswith('.jpg') or filename.endswith('.png'):
+                        image_path = os.path.join(folder_path, filename)
+                        label = QLabel()
+                        pixmap = QPixmap(image_path)
+                        label.setPixmap(pixmap)
+                        label.setAlignment(Qt.AlignCenter)
+                        layout.addWidget(label)  # 将label添加到布局中
+
+                widget = QWidget()  # 创建一个widget作为容器
+                widget.setLayout(layout)  # 将布局设置给widget
+                self.ScrollArea.setWidget(widget)  # 将widget设置为滚动区域的子部件
+
+        except Exception as e:
+            print(f"Error in ImagePresenter: {e}")
     def open_file_dialog(self):
         options = QFileDialog.Options()
         options |= QFileDialog.ReadOnly

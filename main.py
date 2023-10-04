@@ -1,13 +1,13 @@
 import sys
 import cv2
 from PyQt5.QtWidgets import QApplication, QMainWindow, QFileDialog, QMessageBox,QProgressBar ,QLabel, QSpacerItem, QSizePolicy, QDialog, QVBoxLayout, QWidget
+from PyQt5.QtWidgets import QFileDialog, QLabel
+from PyQt5.QtGui import QPixmap
 from demo import Ui_MainWindow
 from scenedetect.video_splitter import split_video_ffmpeg
 import os
 from PyQt5.QtGui import QPixmap
-from PyQt5.QtCore import pyqtSignal, pyqtSlot, QThread
-from PyQt5.uic import loadUi
-import subprocess
+from PyQt5.QtCore import pyqtSignal, pyqtSlot, QThread, Qt
 import scenedetect
 from scenedetect import open_video, ContentDetector, SceneManager
 from scenedetect.stats_manager import StatsManager
@@ -50,23 +50,79 @@ class VideoClipper(QThread):
         # 一旦视频截取完成，发射了一个自定义的信号 finished，这个信号可以被其他部分的代码捕获并进行相应的处理。
         self.finished.emit()
 
-class ImagePresent(QThread):
-    finished = pyqtSignal()
-    progressChanged = pyqtSignal(int)
+class ImagePresenter(QThread):
+    def run(self):
+        try:
+            # 创建了一个 QFileDialog 的选项对象。
+            options = QFileDialog.Options()
+
+            # 将选项设置为只显示目录
+            options |= QFileDialog.ShowDirsOnly
+
+            # 打开一个文件对话框，让用户选择一个目录。getExistingDirectory 返回用户选择的目录路径，并将其存储在 folder_path 变量中
+            folder_path = QFileDialog.getExistingDirectory(None, "Select Folder", options=options)
+
+            if folder_path:
+                # 遍历选定目录下的所有文件和子目录。
+                for filename in os.listdir(folder_path):
+
+                    if filename.endswith('.jpg') or filename.endswith('.png'):
+                        # 构建完整的图片文件路径
+                        image_path = os.path.join(folder_path, filename)
+                        # 创建一个 QLabel 对象，用于显示图片
+                        label = QLabel()
+                        # 使用 QPixmap 类加载图片，创建一个图片对象
+                        pixmap = QPixmap(image_path)
+
+                        # 将 QPixmap 对象设置为 QLabel 的显示内容
+                        label.setPixmap(pixmap)
+
+                        # 设置 QLabel 中的图片在水平和垂直方向上都居中显示
+                        label.setAlignment(Qt.AlignCenter)
+
+                        # 将 QLabel 添加到一个滚动区域的布局中
+                        self.scrollAreaWidgetContents.layout().addWidget(label)
+
+        except Exception as e:
+            print(f"Error in ImagePresenter: {e}")
+
 
 # 一个名为 VideoProcessor 的类，继承自 QThread，用于处理视频
 class VideoProcessor(QThread):
     finished = pyqtSignal()
     progressChanged = pyqtSignal(int)
 
-    def __init__(self, file_path, csv_path):  # 添加 csv_path 参数
+    def __init__(self, file_path, csv_path):
         super().__init__()
         self.file_path = file_path
-        self.csv_path = csv_path  # 存储传递进来的 csv_path
+        self.csv_path = csv_path
 
+    def capture_representative_frame(self, video_path):
+        if not os.path.exists(os.path.join(video_path, 'images')):
+            os.makedirs(os.path.join(video_path, 'images'))
+
+        for filename in os.listdir(video_path):
+            if filename.endswith('.mp4') or filename.endswith('.avi'):
+                video_file_path = os.path.join(video_path, filename)
+
+                cap = cv2.VideoCapture(video_file_path)
+                if not cap.isOpened():
+                    print(f"无法打开视频文件 {filename}")
+                    continue
+
+                total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+                ret, frame = cap.read()
+                if not ret:
+                    print(f"无法读取视频帧 {filename}")
+                    continue
+
+                image_path = os.path.join(video_path, 'images', f'{filename}_frame.jpg')
+                cv2.imwrite(image_path, frame)
+
+                cap.release()
 
     def run(self):
-        # scenes 是一个列表，其中包含了从视频中检测到的场景信息,每个场景被表示为一个元组，包含了两个时间码对象，分别是 start_timecode 和 end_timecode
         video = open_video(self.file_path)
 
         scene_manager = SceneManager(stats_manager=StatsManager())
@@ -81,19 +137,25 @@ class VideoProcessor(QThread):
 
         scene_ranges = [(start_frame, end_frame) for start_frame, end_frame in scene_list]
 
-        output_directory = os.path.join(os.getcwd(), 'images')  # Output directory: current working directory/images
+        output_directory_base = 'video'
+        output_directory = output_directory_base
+        suffix = 1
 
-        if not os.path.exists(output_directory):
-            os.makedirs(output_directory)
+        while os.path.exists(output_directory):
+            suffix += 1
+            output_directory = f'{output_directory_base}_{suffix}'
+
+        os.makedirs(output_directory)
 
         output_file_template = os.path.join(output_directory, '$VIDEO_NAME-Scene-$SCENE_NUMBER.mp4')
 
         split_video_ffmpeg(self.file_path, scene_ranges, output_file_template=output_file_template)
 
-        STATS_FILE_PATH = self.csv_path  # 使用传递进来的 csv_path
-
-        # Save per-frame statistics to disk.
+        STATS_FILE_PATH = self.csv_path
         scene_manager.stats_manager.save_to_csv(csv_file=STATS_FILE_PATH)
+
+        video_path = output_directory
+        self.capture_representative_frame(video_path)
 
         self.finished.emit()
 
@@ -107,7 +169,9 @@ class MyWindow(QMainWindow, Ui_MainWindow):
         self.Stop_process.clicked.connect(self.stop_processing)
         self.file_path = None
         self.video_processor = None
-        self.Auto_cut.clicked.connect(self.clip_video)
+        self.Manual_cut.clicked.connect(self.clip_video)
+        self.Present_images.clicked.connect(self.present_images)
+        self.ScrollArea = self.scrollAreaWidgetContents
 
 
     def open_file_dialog(self):
@@ -123,6 +187,11 @@ class MyWindow(QMainWindow, Ui_MainWindow):
             QMessageBox.information(None, "成功导入", f"已成功导入视频文件：{self.file_path}", QMessageBox.Ok)
         else:
             QMessageBox.warning(None, "导入失败", "未选择文件或文件无效", QMessageBox.Ok)
+
+    def present_images(self):  # Renamed the method
+        image_presentation = ImagePresenter()  # Create an instance of ImagePresenter
+        image_presentation.finished.connect(self.image_presentation_finished)
+        image_presentation.start()
 
     def process_video(self):
         self.Process.setEnabled(False)  # 禁用处理按钮
@@ -150,28 +219,36 @@ class MyWindow(QMainWindow, Ui_MainWindow):
             self.Process.setEnabled(True)  # 启用处理按钮
 
     def clip_video(self):
-        self.Auto_cut.setEnabled(False)
+        self.Manual_cut.setEnabled(False)
         input_file = self.file_path
         if input_file:
             output_file, _ = QFileDialog.getSaveFileName(None, "Save Video File", "",
                                                          "Video Files (*.mp4);;All Files (*)")
             if output_file:
-                start_time = 60
-                end_time = 120
+                start_time = self.start_time.text() # Get the text from the QLineEdit
+                end_time = self.end_time.text()  # Get the text from the QLineEdit
 
-                # 创建一个名为 `self.video_clipper` 的 `VideoClipper` 对象，
-                # 用于执行视频剪辑操作。传递了输入文件路径、输出文件路径以及剪辑的起始和结束时间。
-                self.video_clipper = VideoClipper(input_file, output_file, start_time, end_time)
+                try:
+                    # Validate user input (make sure they are in the format hh:mm:ss)
+                    start_time = [int(x) for x in start_time.split(':')]
+                    end_time = [int(x) for x in end_time.split(':')]
+                    if not (0 <= start_time[0] < 24 and 0 <= start_time[1] < 60 and 0 <= start_time[2] < 60) or \
+                            not (0 <= end_time[0] < 24 and 0 <= end_time[1] < 60 and 0 <= end_time[2] < 60):
+                        raise ValueError("Invalid time format")
 
-                # 建立了一个信号-槽连接。progressChanged 信号是 VideoClipper 类中定义的用于传递剪辑进度的信号，
-                # 它连接到了 self.update_progress 方法，以便在剪辑过程中更新进度条。
-                self.video_clipper.progressChanged.connect(self.update_progress)
-                # 建立了一个信号-槽连接。`finished` 信号在剪辑完成时发射，
-                # 连接到了 `self.clip_finished` 方法，以便在剪辑完成时执行相应的操作。
-                self.video_clipper.finished.connect(self.clip_finished)
+                    start_seconds = start_time[0] * 3600 + start_time[1] * 60 + start_time[2]
+                    end_seconds = end_time[0] * 3600 + end_time[1] * 60 + end_time[2]
 
-                # 开始执行视频剪辑，启动了一个新的线程来处理剪辑操作。
-                self.video_clipper.start()
+                    self.video_clipper = VideoClipper(input_file, output_file, start_seconds, end_seconds)
+                    self.video_clipper.progressChanged.connect(self.update_progress)
+                    self.video_clipper.finished.connect(self.clip_finished)
+                    self.video_clipper.start()
+
+                except ValueError as e:
+                    QMessageBox.warning(self, "Invalid Input", "Please enter a valid time span in the format hh:mm:ss.",
+                                        QMessageBox.Ok)
+
+        self.Manual_cut.setEnabled(True)
 
     def update_progress(self, progress):
         self.clip_rate.setValue(progress)
