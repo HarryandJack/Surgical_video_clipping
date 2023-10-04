@@ -2,14 +2,16 @@ import sys
 import cv2
 from PyQt5.QtWidgets import QApplication, QMainWindow, QFileDialog, QMessageBox,QProgressBar ,QLabel, QSpacerItem, QSizePolicy, QDialog, QVBoxLayout, QWidget
 from demo import Ui_MainWindow
+from scenedetect.video_splitter import split_video_ffmpeg
 import os
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtCore import pyqtSignal, pyqtSlot, QThread
 from PyQt5.uic import loadUi
 import subprocess
 import scenedetect
+from scenedetect import open_video, ContentDetector, SceneManager
+from scenedetect.stats_manager import StatsManager
 from scenedetect import VideoManager
-from scenedetect.scene_manager import SceneManager
 from scenedetect.frame_timecode import FrameTimecode
 from moviepy.video.io.ffmpeg_tools import ffmpeg_extract_subclip
 from moviepy.video.io.VideoFileClip import VideoFileClip
@@ -57,38 +59,45 @@ class VideoProcessor(QThread):
     finished = pyqtSignal()
     progressChanged = pyqtSignal(int)
 
-    def __init__(self, file_path):
+    def __init__(self, file_path, csv_path):  # 添加 csv_path 参数
         super().__init__()
         self.file_path = file_path
+        self.csv_path = csv_path  # 存储传递进来的 csv_path
+
 
     def run(self):
-        # Create a video manager and a scene manager.
-        video_manager = scenedetect.VideoManager([self.file_path])
-        scene_manager = scenedetect.SceneManager()
+        # scenes 是一个列表，其中包含了从视频中检测到的场景信息,每个场景被表示为一个元组，包含了两个时间码对象，分别是 start_timecode 和 end_timecode
+        video = open_video(self.file_path)
 
-        # Add a detector (ContentDetector) to the scene manager.
-        scene_manager.add_detector(scenedetect.detectors.ContentDetector())
+        scene_manager = SceneManager(stats_manager=StatsManager())
 
-        try:
-            video_manager.set_downscale_factor()
-            video_manager.start()
-            scene_manager.detect_scenes(frame_source=video_manager)
+        content_detector = ContentDetector()
 
-            for i, scene in enumerate(scene_manager.get_scene_list()):
-                start_frame, end_frame = scene
+        scene_manager.add_detector(content_detector)
 
-                if end_frame - start_frame >= 100:  # Only process scenes longer than 100 frames.
-                    frame_count = (start_frame + end_frame) // 2
-                    self.progressChanged.emit(frame_count)
+        scene_manager.detect_scenes(video=video)
 
-                    # Process the frames here (e.g., save images).
-                    # ...
+        scene_list = scene_manager.get_scene_list()
 
-        finally:
-            video_manager.release()
+        scene_ranges = [(start_frame, end_frame) for start_frame, end_frame in scene_list]
+
+        output_directory = os.path.join(os.getcwd(), 'images')  # Output directory: current working directory/images
+
+        if not os.path.exists(output_directory):
+            os.makedirs(output_directory)
+
+        output_file_template = os.path.join(output_directory, '$VIDEO_NAME-Scene-$SCENE_NUMBER.mp4')
+
+        split_video_ffmpeg(self.file_path, scene_ranges, output_file_template=output_file_template)
+
+        STATS_FILE_PATH = self.csv_path  # 使用传递进来的 csv_path
+
+        # Save per-frame statistics to disk.
+        scene_manager.stats_manager.save_to_csv(csv_file=STATS_FILE_PATH)
 
         self.finished.emit()
 
+# MyWindow 类继承了两个类的功能，一方面它是一个主窗口，拥有主窗口的功能，另一方面它也拥有从 Ui_MainWindow 类继承而来的界面设计
 class MyWindow(QMainWindow, Ui_MainWindow):
     def __init__(self):
         super().__init__()
@@ -115,24 +124,33 @@ class MyWindow(QMainWindow, Ui_MainWindow):
         else:
             QMessageBox.warning(None, "导入失败", "未选择文件或文件无效", QMessageBox.Ok)
 
-
     def process_video(self):
+        self.Process.setEnabled(False)  # 禁用处理按钮
         if self.file_path:
-            self.video_processor = VideoProcessor(self.file_path)
-            self.video_processor.finished.connect(self.process_finished)
-            self.video_processor.start()
-
+            csv_path, _ = QFileDialog.getSaveFileName(None, "Save CSV File", "",
+                                                      "CSV Files (*.csv);;All Files (*)")
+            if csv_path:  # 检查用户是否选择了 CSV 文件
+                self.video_processor = VideoProcessor(self.file_path, csv_path)  # 传递 csv_path
+                self.video_processor.progressChanged.connect(self.update_progress)
+                self.video_processor.finished.connect(self.process_finished)
+                self.video_processor.start()
+            else:
+                QMessageBox.warning(None, "处理失败", "未选择保存的 CSV 文件", QMessageBox.Ok)
         else:
             QMessageBox.warning(None, "处理失败", "未选择文件或文件无效", QMessageBox.Ok)
 
     def process_finished(self):
+        self.process_rate.setValue(100)
         QMessageBox.information(None, "处理完成", "视频处理完成", QMessageBox.Ok)
+        self.Process.setEnabled(True)  # 启用处理按钮
 
     def stop_processing(self):
         if self.video_processor and self.video_processor.isRunning():
             self.video_processor.terminate()
+            self.Process.setEnabled(True)  # 启用处理按钮
 
     def clip_video(self):
+        self.Auto_cut.setEnabled(False)
         input_file = self.file_path
         if input_file:
             output_file, _ = QFileDialog.getSaveFileName(None, "Save Video File", "",
@@ -165,6 +183,8 @@ class MyWindow(QMainWindow, Ui_MainWindow):
         self.Process.setEnabled(True)  # 启用处理按钮
         self.Stop_process.setEnabled(True)  # 启用停止按钮
 
+    # 在Python中，所有方法的第一个参数通常都是self，它表示类的实例本身
+    # 在类的方法中，self代表当前的类实例。通过使用self，可以访问类中的属性和其他方法。
     def update_process_progress(self, progress):
         self.process_rate.setValue(progress)
 

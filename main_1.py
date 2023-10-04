@@ -2,11 +2,19 @@ import sys
 import cv2
 from PyQt5.QtWidgets import QApplication, QMainWindow, QFileDialog, QMessageBox,QProgressBar ,QLabel, QSpacerItem, QSizePolicy, QDialog, QVBoxLayout, QWidget
 from demo import Ui_MainWindow
+from scenedetect.video_splitter import split_video_ffmpeg
 import os
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtCore import pyqtSignal, pyqtSlot, QThread
 from PyQt5.uic import loadUi
 import subprocess
+import scenedetect
+from scenedetect import open_video, ContentDetector, SceneManager
+from scenedetect.stats_manager import StatsManager
+from scenedetect import VideoManager
+from scenedetect.frame_timecode import FrameTimecode
+from moviepy.video.io.ffmpeg_tools import ffmpeg_extract_subclip
+from moviepy.video.io.VideoFileClip import VideoFileClip
 
 # 定义了一个名为 VideoClipper 的类，它继承自 QThread，这是 PyQt 框架中用于创建线程的基类/
 class VideoClipper(QThread):
@@ -26,31 +34,21 @@ class VideoClipper(QThread):
         self.end_time = end_time
 
     def run(self):
-        command = [
-            'ffmpeg',
-            '-i', self.input_file,
-            '-ss', str(self.start_time),
-            '-to', str(self.end_time),
-            self.output_file
-        ]
+        # 通过 moviepy 库的 VideoFileClip 类加载了输入的视频文件 (self.input_file)。这一行将视频文件加载到一个变量 video_clip 中
+        video_clip = VideoFileClip(self.input_file)
 
-        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        while True:
-            output = process.stderr.readline()
-            if process.poll() is not None:
-                break
-            if output:
-                progress = self.parse_progress(output)
-                # 在 VideoClipper 类中定义的信号 progressChanged 被发射的语句。
-                self.progressChanged.emit(progress)
+        # Calculate start and end times in seconds
+        start_time_seconds = self.start_time
+        end_time_seconds = self.end_time
 
-        process.communicate()
+        # Define the output file path
+        output_file_path = self.output_file
+
+        # 用于从输入的视频文件中截取一个子片段。具体来说，它接受输入文件路径、开始时间（以秒为单位）、结束时间（以秒为单位）和目标文件路径作为参数。截取后的视频将保存在目标文件路径 (output_file_path)
+        ffmpeg_extract_subclip(self.input_file, start_time_seconds, end_time_seconds, targetname=output_file_path)
+
+        # 一旦视频截取完成，发射了一个自定义的信号 finished，这个信号可以被其他部分的代码捕获并进行相应的处理。
         self.finished.emit()
-
-    def parse_progress(self, output):
-        # 在这里解析 FFmpeg 输出的进度信息
-        # 这可能需要根据实际情况进行定制
-        pass
 
 class ImagePresent(QThread):
     finished = pyqtSignal()
@@ -60,78 +58,46 @@ class ImagePresent(QThread):
 class VideoProcessor(QThread):
     finished = pyqtSignal()
     progressChanged = pyqtSignal(int)
-    def __init__(self, file_path):
-        #调用了父类 QThread 的构造函数，初始化了线程
+
+    def __init__(self, file_path, csv_path):  # 添加 csv_path 参数
         super().__init__()
-        #构造函数接受一个参数 file_path，表示要处理的视频文件的路径
         self.file_path = file_path
+        self.csv_path = csv_path  # 存储传递进来的 csv_path
+
 
     def run(self):
-        #使用 OpenCV 的 cv2.VideoCapture() 方法打开视频文件
-        cap = cv2.VideoCapture(self.file_path)
-        #设置一个文件夹路径，用于存储处理后的图片
-        folder_path = 'images'
+        # scenes 是一个列表，其中包含了从视频中检测到的场景信息,每个场景被表示为一个元组，包含了两个时间码对象，分别是 start_timecode 和 end_timecode
+        video = open_video(self.file_path)
 
-        # 如果文件夹存在，则删除其中的所有文件
-        if os.path.exists(folder_path):
-            for filename in os.listdir(folder_path):
-                file_path = os.path.join(folder_path, filename)
-                os.remove(file_path)
-        else:
-            os.makedirs(folder_path)
+        scene_manager = SceneManager(stats_manager=StatsManager())
 
-        # 初始化一个变量 prev_frame，用于存储前一帧的灰度图像
-        prev_frame = None
+        content_detector = ContentDetector()
 
-        # 初始化一个变量 frame_count，用于记录处理的帧数
-        frame_count = 0
+        scene_manager.add_detector(content_detector)
 
-        # 进入一个无限循环，开始处理视频帧
-        while True:
-            # 读取视频的一帧，ret 表示是否成功读取，frame 是读取到的帧
-            ret, frame = cap.read()
-            if not ret:
-                break
+        scene_manager.detect_scenes(video=video)
 
-            # 帧数加一
-            frame_count += 1
+        scene_list = scene_manager.get_scene_list()
 
-            # 每处理 100 帧执行一次以下操作
-            if frame_count % 100 == 0:
+        scene_ranges = [(start_frame, end_frame) for start_frame, end_frame in scene_list]
 
-                # 将彩色帧转换为灰度图像。
-                gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        output_directory = os.path.join(os.getcwd(), 'images')  # Output directory: current working directory/images
 
-                # 如果前一帧为空（第一帧），将当前帧赋给 prev_frame 并继续下一轮循环
-                if prev_frame is None:
-                    prev_frame = gray_frame
-                    continue
+        if not os.path.exists(output_directory):
+            os.makedirs(output_directory)
 
-                # 计算前一帧和当前帧的差异
-                diff = cv2.absdiff(prev_frame, gray_frame)
+        output_file_template = os.path.join(output_directory, '$VIDEO_NAME-Scene-$SCENE_NUMBER.mp4')
 
-                # 设置一个阈值
-                threshold = 100
+        split_video_ffmpeg(self.file_path, scene_ranges, output_file_template=output_file_template)
 
-                # 对差异进行二值化处理
-                _, thresholded_diff = cv2.threshold(diff, threshold, 255, cv2.THRESH_BINARY)
+        STATS_FILE_PATH = self.csv_path  # 使用传递进来的 csv_path
 
-                # 如果二值化后的差异中非零像素超过 1000 个
-                if cv2.countNonZero(thresholded_diff) > 1000:
-                    self.progressChanged.emit(frame_count)
-                    #构造保存图片的路径。
-                    image_path = f"images/frame_{frame_count}.jpg"
+        # Save per-frame statistics to disk.
+        scene_manager.stats_manager.save_to_csv(csv_file=STATS_FILE_PATH)
 
-                    #将当前帧保存为图片
-                    cv2.imwrite(image_path, frame)
-                    print(f"保存图片：{image_path}")
-
-                # 更新前一帧
-                prev_frame = gray_frame
-        # 释放视频对象
-        cap.release()
         self.finished.emit()
 
+# MyWindow 类继承了两个类的功能，一方面它是一个主窗口，拥有主窗口的功能，另一方面它也拥有从 Ui_MainWindow 类继承而来的界面设计
 class MyWindow(QMainWindow, Ui_MainWindow):
     def __init__(self):
         super().__init__()
@@ -141,7 +107,7 @@ class MyWindow(QMainWindow, Ui_MainWindow):
         self.Stop_process.clicked.connect(self.stop_processing)
         self.file_path = None
         self.video_processor = None
-        self.Auto_cut.clicked.connect(self.clip_video)
+        self.Manual_cut.clicked.connect(self.clip_video)
 
 
     def open_file_dialog(self):
@@ -158,45 +124,62 @@ class MyWindow(QMainWindow, Ui_MainWindow):
         else:
             QMessageBox.warning(None, "导入失败", "未选择文件或文件无效", QMessageBox.Ok)
 
-
     def process_video(self):
+        self.Process.setEnabled(False)  # 禁用处理按钮
         if self.file_path:
-            self.video_processor = VideoProcessor(self.file_path)
-            self.video_processor.finished.connect(self.process_finished)
-            self.video_processor.start()
-
+            csv_path, _ = QFileDialog.getSaveFileName(None, "Save CSV File", "",
+                                                      "CSV Files (*.csv);;All Files (*)")
+            if csv_path:  # 检查用户是否选择了 CSV 文件
+                self.video_processor = VideoProcessor(self.file_path, csv_path)  # 传递 csv_path
+                self.video_processor.progressChanged.connect(self.update_progress)
+                self.video_processor.finished.connect(self.process_finished)
+                self.video_processor.start()
+            else:
+                QMessageBox.warning(None, "处理失败", "未选择保存的 CSV 文件", QMessageBox.Ok)
         else:
             QMessageBox.warning(None, "处理失败", "未选择文件或文件无效", QMessageBox.Ok)
 
     def process_finished(self):
+        self.process_rate.setValue(100)
         QMessageBox.information(None, "处理完成", "视频处理完成", QMessageBox.Ok)
+        self.Process.setEnabled(True)  # 启用处理按钮
 
     def stop_processing(self):
         if self.video_processor and self.video_processor.isRunning():
             self.video_processor.terminate()
+            self.Process.setEnabled(True)  # 启用处理按钮
 
     def clip_video(self):
+        self.Manual_cut.setEnabled(False)
         input_file = self.file_path
         if input_file:
             output_file, _ = QFileDialog.getSaveFileName(None, "Save Video File", "",
                                                          "Video Files (*.mp4);;All Files (*)")
             if output_file:
-                start_time = 60
-                end_time = 120
+                start_time = self.start_time.text() # Get the text from the QLineEdit
+                end_time = self.end_time.text()  # Get the text from the QLineEdit
 
-                # 创建一个名为 `self.video_clipper` 的 `VideoClipper` 对象，
-                # 用于执行视频剪辑操作。传递了输入文件路径、输出文件路径以及剪辑的起始和结束时间。
-                self.video_clipper = VideoClipper(input_file, output_file, start_time, end_time)
+                try:
+                    # Validate user input (make sure they are in the format hh:mm:ss)
+                    start_time = [int(x) for x in start_time.split(':')]
+                    end_time = [int(x) for x in end_time.split(':')]
+                    if not (0 <= start_time[0] < 24 and 0 <= start_time[1] < 60 and 0 <= start_time[2] < 60) or \
+                            not (0 <= end_time[0] < 24 and 0 <= end_time[1] < 60 and 0 <= end_time[2] < 60):
+                        raise ValueError("Invalid time format")
 
-                # 建立了一个信号-槽连接。progressChanged 信号是 VideoClipper 类中定义的用于传递剪辑进度的信号，
-                # 它连接到了 self.update_progress 方法，以便在剪辑过程中更新进度条。
-                self.video_clipper.progressChanged.connect(self.update_progress)
-                # 建立了一个信号-槽连接。`finished` 信号在剪辑完成时发射，
-                # 连接到了 `self.clip_finished` 方法，以便在剪辑完成时执行相应的操作。
-                self.video_clipper.finished.connect(self.clip_finished)
+                    start_seconds = start_time[0] * 3600 + start_time[1] * 60 + start_time[2]
+                    end_seconds = end_time[0] * 3600 + end_time[1] * 60 + end_time[2]
 
-                # 开始执行视频剪辑，启动了一个新的线程来处理剪辑操作。
-                self.video_clipper.start()
+                    self.video_clipper = VideoClipper(input_file, output_file, start_seconds, end_seconds)
+                    self.video_clipper.progressChanged.connect(self.update_progress)
+                    self.video_clipper.finished.connect(self.clip_finished)
+                    self.video_clipper.start()
+
+                except ValueError as e:
+                    QMessageBox.warning(self, "Invalid Input", "Please enter a valid time span in the format hh:mm:ss.",
+                                        QMessageBox.Ok)
+
+        self.Manual_cut.setEnabled(True)
 
     def update_progress(self, progress):
         self.clip_rate.setValue(progress)
@@ -208,6 +191,8 @@ class MyWindow(QMainWindow, Ui_MainWindow):
         self.Process.setEnabled(True)  # 启用处理按钮
         self.Stop_process.setEnabled(True)  # 启用停止按钮
 
+    # 在Python中，所有方法的第一个参数通常都是self，它表示类的实例本身
+    # 在类的方法中，self代表当前的类实例。通过使用self，可以访问类中的属性和其他方法。
     def update_process_progress(self, progress):
         self.process_rate.setValue(progress)
 
