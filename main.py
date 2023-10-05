@@ -1,18 +1,15 @@
 import sys
 import cv2
-from PyQt5.QtWidgets import QApplication, QMainWindow, QFileDialog, QMessageBox,QProgressBar ,QLabel, QSpacerItem, QSizePolicy, QDialog, QVBoxLayout, QWidget
-from PyQt5.QtWidgets import QFileDialog, QLabel
-from PyQt5.QtGui import QPixmap
+from PyQt5.QtWidgets import QApplication, QMainWindow, QMessageBox,QProgressBar, QSpacerItem, QSizePolicy, QDialog, QCheckBox, QWidget
+from PyQt5.QtWidgets import QFileDialog, QLabel, QGridLayout
 from demo import Ui_MainWindow
 from scenedetect.video_splitter import split_video_ffmpeg
 import os
 from PyQt5.QtGui import QPixmap
-from PyQt5.QtCore import pyqtSignal, pyqtSlot, QThread, Qt
-import scenedetect
+from PyQt5.QtCore import pyqtSignal, QThread, Qt
 from scenedetect import open_video, ContentDetector, SceneManager
 from scenedetect.stats_manager import StatsManager
-from scenedetect import VideoManager
-from scenedetect.frame_timecode import FrameTimecode
+from moviepy.editor import *
 from moviepy.video.io.ffmpeg_tools import ffmpeg_extract_subclip
 from moviepy.video.io.VideoFileClip import VideoFileClip
 
@@ -50,42 +47,6 @@ class VideoClipper(QThread):
         # 一旦视频截取完成，发射了一个自定义的信号 finished，这个信号可以被其他部分的代码捕获并进行相应的处理。
         self.finished.emit()
 
-class ImagePresenter(QThread):
-    def run(self):
-        try:
-            # 创建了一个 QFileDialog 的选项对象。
-            options = QFileDialog.Options()
-
-            # 将选项设置为只显示目录
-            options |= QFileDialog.ShowDirsOnly
-
-            # 打开一个文件对话框，让用户选择一个目录。getExistingDirectory 返回用户选择的目录路径，并将其存储在 folder_path 变量中
-            folder_path = QFileDialog.getExistingDirectory(None, "Select Folder", options=options)
-
-            if folder_path:
-                # 遍历选定目录下的所有文件和子目录。
-                for filename in os.listdir(folder_path):
-
-                    if filename.endswith('.jpg') or filename.endswith('.png'):
-                        # 构建完整的图片文件路径
-                        image_path = os.path.join(folder_path, filename)
-                        # 创建一个 QLabel 对象，用于显示图片
-                        label = QLabel()
-                        # 使用 QPixmap 类加载图片，创建一个图片对象
-                        pixmap = QPixmap(image_path)
-
-                        # 将 QPixmap 对象设置为 QLabel 的显示内容
-                        label.setPixmap(pixmap)
-
-                        # 设置 QLabel 中的图片在水平和垂直方向上都居中显示
-                        label.setAlignment(Qt.AlignCenter)
-
-                        # 将 QLabel 添加到一个滚动区域的布局中
-                        self.scrollAreaWidgetContents.layout().addWidget(label)
-
-        except Exception as e:
-            print(f"Error in ImagePresenter: {e}")
-
 
 # 一个名为 VideoProcessor 的类，继承自 QThread，用于处理视频
 class VideoProcessor(QThread):
@@ -98,13 +59,16 @@ class VideoProcessor(QThread):
         self.csv_path = csv_path
 
     def capture_representative_frame(self, video_path):
+        # 检查是否存在 'images' 文件夹，如果不存在则创建
         if not os.path.exists(os.path.join(video_path, 'images')):
             os.makedirs(os.path.join(video_path, 'images'))
 
+        # 遍历目录下的视频文件
         for filename in os.listdir(video_path):
             if filename.endswith('.mp4') or filename.endswith('.avi'):
                 video_file_path = os.path.join(video_path, filename)
 
+                # 打开视频文件
                 cap = cv2.VideoCapture(video_file_path)
                 if not cap.isOpened():
                     print(f"无法打开视频文件 {filename}")
@@ -112,52 +76,71 @@ class VideoProcessor(QThread):
 
                 total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
+                # 读取第一帧
                 ret, frame = cap.read()
                 if not ret:
                     print(f"无法读取视频帧 {filename}")
                     continue
 
+                # 生成图像路径并保存
                 image_path = os.path.join(video_path, 'images', f'{filename}_frame.jpg')
                 cv2.imwrite(image_path, frame)
 
+                # 释放视频对象
                 cap.release()
 
     def run(self):
+        # 打开视频文件
         video = open_video(self.file_path)
 
+        # 创建一个场景管理器，并传入统计管理器作为参数
         scene_manager = SceneManager(stats_manager=StatsManager())
 
+        # 创建一个内容检测器
         content_detector = ContentDetector()
 
+        # 将内容检测器添加到场景管理器中
         scene_manager.add_detector(content_detector)
 
+        # 在视频中检测场景
         scene_manager.detect_scenes(video=video)
 
+        # 获取场景列表
         scene_list = scene_manager.get_scene_list()
 
+        # 将场景起止帧数整理成列表
         scene_ranges = [(start_frame, end_frame) for start_frame, end_frame in scene_list]
 
+        # 设置输出目录和模板
         output_directory_base = 'video'
         output_directory = output_directory_base
         suffix = 1
 
+        # 确保输出目录是唯一的
         while os.path.exists(output_directory):
             suffix += 1
             output_directory = f'{output_directory_base}_{suffix}'
 
+        # 创建输出目录
         os.makedirs(output_directory)
 
+        # 设置输出文件模板
         output_file_template = os.path.join(output_directory, '$VIDEO_NAME-Scene-$SCENE_NUMBER.mp4')
 
+        # 使用ffmpeg拆分视频
         split_video_ffmpeg(self.file_path, scene_ranges, output_file_template=output_file_template)
 
+        # 保存场景统计信息到CSV文件
         STATS_FILE_PATH = self.csv_path
         scene_manager.stats_manager.save_to_csv(csv_file=STATS_FILE_PATH)
 
+        # 从生成的视频中抓取代表帧
         video_path = output_directory
         self.capture_representative_frame(video_path)
 
+        # 发射处理完成信号
         self.finished.emit()
+
 
 # MyWindow 类继承了两个类的功能，一方面它是一个主窗口，拥有主窗口的功能，另一方面它也拥有从 Ui_MainWindow 类继承而来的界面设计
 class MyWindow(QMainWindow, Ui_MainWindow):
@@ -171,8 +154,126 @@ class MyWindow(QMainWindow, Ui_MainWindow):
         self.video_processor = None
         self.Manual_cut.clicked.connect(self.clip_video)
         self.Present_images.clicked.connect(self.present_images)
-        self.ScrollArea = self.scrollAreaWidgetContents
 
+        # 添加一个字典，用于跟踪用户选择的图像路径和复选框状态
+        self.selected_images = {}
+
+    def count_images_in_folder(self, folder_path):
+        # 获取指定文件夹内的所有文件和子目录
+        files = os.listdir(folder_path)
+
+        # 使用列表推导式筛选出所有以 '.jpg' 或 '.png' 结尾的文件
+        images = [f for f in files if f.endswith('.jpg') or f.endswith('.png')]
+
+        # 返回图片数量
+        return len(images)
+
+    def image_checkbox_changed(self, image_path, state):
+        """
+        响应图片复选框状态变化的函数。
+
+        Args:
+            image_path (str): 图片的文件路径。
+            state (int): 复选框的状态，可以是 Qt.Checked 或 Qt.Unchecked。
+        """
+        # 检查复选框的状态
+        if state == Qt.Checked:
+            # 如果复选框被选中，将 selected_images 字典中对应的 image_path 键的值设为 True
+            self.selected_images[image_path] = True
+        else:
+            # 如果复选框未被选中，将 selected_images 字典中对应的 image_path 键的值设为 False
+            self.selected_images[image_path] = False
+
+    def present_images(self):
+        try:
+            # 创建一个 QFileDialog 的选项对象。
+            options = QFileDialog.Options()
+
+            # 将选项设置为只显示目录
+            options |= QFileDialog.ShowDirsOnly
+
+            # 打开一个文件对话框，让用户选择一个目录。getExistingDirectory 返回用户选择的目录路径，并将其存储在 folder_path 变量中
+            folder_path = QFileDialog.getExistingDirectory(None, "Select Folder", options=options)
+
+            # 获取文件夹中的图片数量
+            image_count = self.count_images_in_folder(folder_path)
+            print(f'The folder contains {image_count} images')
+
+            if folder_path:
+                # 创建一个 widget 作为容器
+                widget = QWidget()
+
+                # 创建一个网格布局
+                layout = QGridLayout(widget)
+
+                # 遍历文件夹内的文件
+                for i, filename in enumerate(os.listdir(folder_path)):
+                    if filename.endswith('.jpg') or filename.endswith('.png'):
+
+                        # 构建完整的图片文件路径
+                        image_path = os.path.join(folder_path, filename)
+
+                        # 创建一个 QLabel 对象
+                        label = QLabel()
+
+                        # 使用 QPixmap 类加载图片
+                        pixmap = QPixmap(image_path)
+
+                        # 设置图片宽度为150像素，高度等比例缩放
+                        pixmap = pixmap.scaledToWidth(150)
+
+                        # 将 QPixmap 对象设置为 QLabel 的显示内容
+                        label.setPixmap(pixmap)
+
+                        # 设置 QLabel 中的图片在水平和垂直方向上都居中显示
+                        label.setAlignment(Qt.AlignCenter)
+
+                        # 将 label 添加到布局中,i // 5 表示行数，i % 5 表示列数
+                        layout.addWidget(label, i // 5, i % 5)
+
+                        checkbox = QCheckBox()  # 创建一个复选框对象
+
+                        # 将复选框的状态变化信号连接到指定的槽函数
+                        # 使用 lambda 表达式将 image_path 参数传递给槽函数，确保在状态变化时可以获取到对应的图片路径
+                        # Lambda 表达式（也称为匿名函数）是一种在 Python 中创建小型、简单函数的方式，lambda arguments: expression
+                        checkbox.stateChanged.connect(
+                            lambda state, path=image_path: self.image_checkbox_changed(path, state))
+
+                        # 将复选框添加到布局中，i // 5 表示行数，i % 5 表示列数
+                        layout.addWidget(checkbox, i // 5, i % 5)
+
+                # 将 widget 设置为滚动区域的子部件
+                self.ScrollArea.setWidget(widget)
+
+        except Exception as e:
+            print(f"Error in ImagePresenter: {e}")
+
+    def integrate_videos(self):
+
+        # 这一行创建了一个名为 selected_images_paths 的列表，其中包含了那些在 self.selected_images 字典中对应的值为 True 的图像文件路径。
+        selected_images_paths = [path for path, selected in self.selected_images.items() if selected]
+
+        if selected_images_paths: # 这段代码检查是否有已选图像
+
+            # 弹出文件选择对话框以选择整合后的视频文件的保存位置
+            output_file, _ = QFileDialog.getSaveFileName(None, "Save Video File", "",
+                                                         "Video Files (*.mp4);;All Files (*)")
+            if output_file:
+
+                # 创建一个 VideoClipper 对象以将选定的图像合并为视频
+                video_clipper = VideoClipper(selected_images_paths, output_file)
+                video_clipper.progressChanged.connect(self.update_progress)
+                video_clipper.finished.connect(self.integration_finished)
+                video_clipper.start()
+        else:
+            QMessageBox.warning(None, "整合失败", "未选择图像", QMessageBox.Ok)
+
+    def integration_finished(self):
+        print("整合完成")
+        self.clip_rate.setValue(100)
+        QMessageBox.information(self, "整合完成", "视频整合完成", QMessageBox.Ok)
+        self.Process.setEnabled(True)
+        self.Stop_process.setEnabled(True)
 
     def open_file_dialog(self):
         options = QFileDialog.Options()
@@ -187,11 +288,6 @@ class MyWindow(QMainWindow, Ui_MainWindow):
             QMessageBox.information(None, "成功导入", f"已成功导入视频文件：{self.file_path}", QMessageBox.Ok)
         else:
             QMessageBox.warning(None, "导入失败", "未选择文件或文件无效", QMessageBox.Ok)
-
-    def present_images(self):  # Renamed the method
-        image_presentation = ImagePresenter()  # Create an instance of ImagePresenter
-        image_presentation.finished.connect(self.image_presentation_finished)
-        image_presentation.start()
 
     def process_video(self):
         self.Process.setEnabled(False)  # 禁用处理按钮

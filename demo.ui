@@ -6,9 +6,15 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1126</width>
-    <height>838</height>
+    <width>1125</width>
+    <height>842</height>
    </rect>
+  </property>
+  <property name="maximumSize">
+   <size>
+    <width>1125</width>
+    <height>842</height>
+   </size>
   </property>
   <property name="windowTitle">
    <string>MainWindow</string>
@@ -450,7 +456,7 @@ QPushButton::hover{
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>1126</width>
+     <width>1125</width>
      <height>23</height>
     </rect>
    </property>
