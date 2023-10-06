@@ -5,6 +5,9 @@ from PyQt5.QtWidgets import QFileDialog, QLabel, QGridLayout
 from demo import Ui_MainWindow
 from scenedetect.video_splitter import split_video_ffmpeg
 import os
+import re
+from VideoClipper import VideoClipper
+from VideoProcessor import VideoProcessor
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtCore import pyqtSignal, QThread, Qt
 from scenedetect import open_video, ContentDetector, SceneManager
@@ -13,137 +16,6 @@ from moviepy.editor import *
 from moviepy.editor import VideoFileClip, concatenate_videoclips
 from moviepy.video.io.ffmpeg_tools import ffmpeg_extract_subclip
 from moviepy.video.io.VideoFileClip import VideoFileClip
-
-# 定义了一个名为 VideoClipper 的类，它继承自 QThread，这是 PyQt 框架中用于创建线程的基类/
-class VideoClipper(QThread):
-
-    # 用于创建一个信号（signal），当视频剪辑完成时会发射这个信号
-    finished = pyqtSignal()
-
-    # 同样是一个类变量，用于创建一个信号，当视频剪辑的进度发生变化时会发射这个信号，传递一个整数参数表示进度
-    progressChanged = pyqtSignal(int)
-
-    # 这是 VideoClipper 类的构造函数。它接受一个参数 file_path，表示要剪辑的视频文件的路径
-    def __init__(self, file_path, output_file, start_time, end_time):
-        super().__init__()
-        self.input_file = file_path
-        self.output_file = output_file
-        self.start_time = start_time
-        self.end_time = end_time
-
-    def run(self):
-        # 通过 moviepy 库的 VideoFileClip 类加载了输入的视频文件 (self.input_file)。这一行将视频文件加载到一个变量 video_clip 中
-        video_clip = VideoFileClip(self.input_file)
-
-        # Calculate start and end times in seconds
-        start_time_seconds = self.start_time
-        end_time_seconds = self.end_time
-
-        # Define the output file path
-        output_file_path = self.output_file
-
-        # 用于从输入的视频文件中截取一个子片段。具体来说，它接受输入文件路径、开始时间（以秒为单位）、结束时间（以秒为单位）和目标文件路径作为参数。截取后的视频将保存在目标文件路径 (output_file_path)
-        ffmpeg_extract_subclip(self.input_file, start_time_seconds, end_time_seconds, targetname=output_file_path)
-
-        # 一旦视频截取完成，发射了一个自定义的信号 finished，这个信号可以被其他部分的代码捕获并进行相应的处理。
-        self.finished.emit()
-
-
-# 一个名为 VideoProcessor 的类，继承自 QThread，用于处理视频
-class VideoProcessor(QThread):
-    finished = pyqtSignal()
-    progressChanged = pyqtSignal(int)
-
-    def __init__(self, file_path, csv_path):
-        super().__init__()
-        self.file_path = file_path
-        self.csv_path = csv_path
-
-    def capture_representative_frame(self, video_path):
-        # 检查是否存在 'images' 文件夹，如果不存在则创建
-        if not os.path.exists(os.path.join(video_path, 'images')):
-            os.makedirs(os.path.join(video_path, 'images'))
-
-        video_path_list = []
-
-        # 遍历目录下的视频文件
-        for filename in os.listdir(video_path):
-            if filename.endswith('.mp4') or filename.endswith('.avi'):
-                video_file_path = os.path.join(video_path, filename)
-
-                video_path_list.append(video_file_path)
-                # 打开视频文件
-                cap = cv2.VideoCapture(video_file_path)
-                if not cap.isOpened():
-                    print(f"无法打开视频文件 {filename}")
-                    continue
-
-                total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-
-                # 读取第一帧
-                ret, frame = cap.read()
-                if not ret:
-                    print(f"无法读取视频帧 {filename}")
-                    continue
-
-                # 生成图像路径并保存
-                image_path = os.path.join(video_path, 'images', f'{filename}_frame.jpg')
-                cv2.imwrite(image_path, frame)
-
-                # 释放视频对象
-                cap.release()
-
-    def run(self):
-        # 打开视频文件
-        video = open_video(self.file_path)
-
-        # 创建一个场景管理器，并传入统计管理器作为参数
-        scene_manager = SceneManager(stats_manager=StatsManager())
-
-        # 创建一个内容检测器
-        content_detector = ContentDetector()
-
-        # 将内容检测器添加到场景管理器中
-        scene_manager.add_detector(content_detector)
-
-        # 在视频中检测场景
-        scene_manager.detect_scenes(video=video)
-
-        # 获取场景列表
-        scene_list = scene_manager.get_scene_list()
-
-        # 将场景起止帧数整理成列表
-        scene_ranges = [(start_frame, end_frame) for start_frame, end_frame in scene_list]
-
-        # 设置输出目录和模板
-        output_directory_base = 'video'
-        output_directory = output_directory_base
-        suffix = 1
-
-        # 确保输出目录是唯一的
-        while os.path.exists(output_directory):
-            suffix += 1
-            output_directory = f'{output_directory_base}_{suffix}'
-
-        # 创建输出目录
-        os.makedirs(output_directory)
-
-        # 设置输出文件模板
-        output_file_template = os.path.join(output_directory, '$VIDEO_NAME-Scene-$SCENE_NUMBER.mp4')
-
-        # 使用ffmpeg拆分视频
-        split_video_ffmpeg(self.file_path, scene_ranges, output_file_template=output_file_template)
-
-        # 保存场景统计信息到CSV文件
-        STATS_FILE_PATH = self.csv_path
-        scene_manager.stats_manager.save_to_csv(csv_file=STATS_FILE_PATH)
-
-        # 从生成的视频中抓取代表帧
-        video_path = output_directory
-        self.capture_representative_frame(video_path)
-
-        # 发射处理完成信号
-        self.finished.emit()
 
 
 # MyWindow 类继承了两个类的功能，一方面它是一个主窗口，拥有主窗口的功能，另一方面它也拥有从 Ui_MainWindow 类继承而来的界面设计
@@ -307,6 +179,7 @@ class MyWindow(QMainWindow, Ui_MainWindow):
 
         selected_videos_paths = [path for path, selected in self.selected_videos.items() if selected]
 
+        # 这段代码是测试哪里错了的
         for video_path in selected_videos_paths:
             if not os.path.exists(video_path):
                 print(f"Error: 文件 {video_path} 不存在")
@@ -388,8 +261,8 @@ class MyWindow(QMainWindow, Ui_MainWindow):
 
                 try:
                     # Validate user input (make sure they are in the format hh:mm:ss)
-                    start_time = [int(x) for x in start_time.split(':')]
-                    end_time = [int(x) for x in end_time.split(':')]
+                    start_time = [int(x) for s in re.split(':|：|,|\.', start_time) for x in s.split()]
+                    end_time = [int(x) for s in re.split(':|：|,|\.', end_time) for x in s.split()]
                     if not (0 <= start_time[0] < 24 and 0 <= start_time[1] < 60 and 0 <= start_time[2] < 60) or \
                             not (0 <= end_time[0] < 24 and 0 <= end_time[1] < 60 and 0 <= end_time[2] < 60):
                         raise ValueError("Invalid time format")
