@@ -203,6 +203,30 @@ class Ui_MainWindow(object):
         self.verticalLayout_2 = QtWidgets.QVBoxLayout(self.verticalLayoutWidget)
         self.verticalLayout_2.setContentsMargins(0, 0, 0, 0)
         self.verticalLayout_2.setObjectName("verticalLayout_2")
+        self.label_6 = QtWidgets.QLabel(self.verticalLayoutWidget)
+        self.label_6.setStyleSheet("self.setStyleSheet(\"QLabel{background:white;}\"\n"
+"                   \"QLabel{color:rgb(100,100,100,250);font-size:15px;font-weight:bold;font-family:Roman times;}\"\n"
+"                   \"QLabel:hover{color:rgb(100,100,100,120);}\")")
+        self.label_6.setObjectName("label_6")
+        self.verticalLayout_2.addWidget(self.label_6)
+        self.integrate_rate = QtWidgets.QProgressBar(self.verticalLayoutWidget)
+        self.integrate_rate.setStyleSheet("QProgressBar::chunk\n"
+"{\n"
+"border-radius:11px;\n"
+"background:qlineargradient(spread:pad,x1:0,y1:0,x2:1,y2:0,stop:0 #01FAFF,stop:1  #26B4FF);\n"
+"}\n"
+"QProgressBar#progressBar\n"
+"{\n"
+"height:22px;\n"
+"text-align:center;/*文本位置*/\n"
+"font-size:14px;\n"
+"color:white;\n"
+"border-radius:11px;\n"
+"background: #1D5573 ;\n"
+"}")
+        self.integrate_rate.setProperty("value", 0)
+        self.integrate_rate.setObjectName("integrate_rate")
+        self.verticalLayout_2.addWidget(self.integrate_rate)
         self.label_2 = QtWidgets.QLabel(self.verticalLayoutWidget)
         self.label_2.setStyleSheet("self.setStyleSheet(\"QLabel{background:white;}\"\n"
 "                   \"QLabel{color:rgb(100,100,100,250);font-size:15px;font-weight:bold;font-family:Roman times;}\"\n"
@@ -328,6 +352,7 @@ class Ui_MainWindow(object):
         self.Stop_process.setText(_translate("MainWindow", "Stop processing"))
         self.Present_images.setText(_translate("MainWindow", "Present the images"))
         self.Integrate.setText(_translate("MainWindow", "Integrate"))
+        self.label_6.setText(_translate("MainWindow", "<html><head/><body><p align=\"center\"><span style=\" font-weight:600; color:#aa00ff;\">合并进度</span></p></body></html>"))
         self.label_2.setText(_translate("MainWindow", "<html><head/><body><p align=\"center\"><span style=\" font-weight:600; color:#aa55ff;\">处理进度</span></p></body></html>"))
         self.label_3.setText(_translate("MainWindow", "<html><head/><body><p align=\"center\"><span style=\" font-weight:600; color:#aa55ff;\">手动剪辑进度</span></p></body></html>"))
         self.Manual_cut.setText(_translate("MainWindow", "Manual cut"))
