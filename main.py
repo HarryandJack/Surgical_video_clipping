@@ -1,7 +1,6 @@
 import sys
 import cv2
-from PyQt5.QtWidgets import QApplication, QMainWindow, QMessageBox,QProgressBar, QSpacerItem, QSizePolicy, QDialog, QCheckBox, QWidget
-from PyQt5.QtWidgets import QFileDialog, QLabel, QGridLayout
+from PyQt5.QtWidgets import QApplication, QMainWindow, QMessageBox, QCheckBox, QWidget, QFileDialog, QLabel, QGridLayout
 from demo import Ui_MainWindow
 from scenedetect.video_splitter import split_video_ffmpeg
 import os
@@ -10,6 +9,7 @@ from PyQt5.QtCore import pyqtSignal, QThread, Qt
 from scenedetect import open_video, ContentDetector, SceneManager
 from scenedetect.stats_manager import StatsManager
 from moviepy.editor import *
+from moviepy.editor import VideoFileClip, concatenate_videoclips
 from moviepy.video.io.ffmpeg_tools import ffmpeg_extract_subclip
 from moviepy.video.io.VideoFileClip import VideoFileClip
 
@@ -63,11 +63,14 @@ class VideoProcessor(QThread):
         if not os.path.exists(os.path.join(video_path, 'images')):
             os.makedirs(os.path.join(video_path, 'images'))
 
+        video_path_list = []
+
         # 遍历目录下的视频文件
         for filename in os.listdir(video_path):
             if filename.endswith('.mp4') or filename.endswith('.avi'):
                 video_file_path = os.path.join(video_path, filename)
 
+                video_path_list.append(video_file_path)
                 # 打开视频文件
                 cap = cv2.VideoCapture(video_file_path)
                 if not cap.isOpened():
@@ -154,9 +157,16 @@ class MyWindow(QMainWindow, Ui_MainWindow):
         self.video_processor = None
         self.Manual_cut.clicked.connect(self.clip_video)
         self.Present_images.clicked.connect(self.present_images)
-
-        # 添加一个字典，用于跟踪用户选择的图像路径和复选框状态
+        finished = pyqtSignal()
+        # 添加两字典，用于跟踪用户选择的图像和视频路径和相应复选框状态
         self.selected_images = {}
+        self.selected_videos = {}
+        """
+        By ensuring that the self.Integrate.clicked.connect(self.integrate_videos) line comes after the creation of self.selected_videos,
+        you make sure that the dictionary is available when self.integrate_videos is called.
+        """
+        self.Integrate.clicked.connect(self.integrate_videos)
+
 
     def count_images_in_folder(self, folder_path):
         # 获取指定文件夹内的所有文件和子目录
@@ -168,21 +178,58 @@ class MyWindow(QMainWindow, Ui_MainWindow):
         # 返回图片数量
         return len(images)
 
+    def get_corresponding_video_path(self, image_path):
+        """
+        获取与给定图像路径对应的视频路径。
+
+        参数:
+            image_path (str): 图像的文件路径。
+
+        返回:
+            str: 与给定图像对应的视频文件路径。
+        """
+        # 获取图片文件名，例如 test-3-Scene-001.mp4_frame.jpg
+        image_filename = os.path.basename(image_path)
+
+        # 从图片文件名中提取视频文件名，例如 test-3-Scene-001.mp4
+        video_filename = image_filename.split('.mp4_frame.jpg')[0] + '.mp4'
+
+        # 获取上一级目录的路径
+        parent_directory = os.path.dirname(os.path.dirname(image_path))
+
+        # 拼接成视频的完整路径
+        video_path = os.path.join(parent_directory, video_filename)
+
+        return video_path
+
     def image_checkbox_changed(self, image_path, state):
         """
-        响应图片复选框状态变化的函数。
+        当与图像相关联的复选框状态发生变化时，调用此函数。
 
-        Args:
-            image_path (str): 图片的文件路径。
-            state (int): 复选框的状态，可以是 Qt.Checked 或 Qt.Unchecked。
+        参数:
+            image_path (str): 图像的文件路径。
+            state (int): 复选框的状态。可以是 Qt.Checked 或 Qt.Unchecked。
         """
-        # 检查复选框的状态
         if state == Qt.Checked:
-            # 如果复选框被选中，将 selected_images 字典中对应的 image_path 键的值设为 True
+            # 如果复选框被选中，更新 selected_images 字典以将此图像标记为选中状态。
             self.selected_images[image_path] = True
+
+            # 找到与此图像对应的视频路径。
+            video_path = self.get_corresponding_video_path(image_path)
+
+            if video_path:
+                # 如果找到相应的视频路径，则在 selected_videos 字典中将其标记为选中状态。
+                self.selected_videos[video_path] = True
         else:
-            # 如果复选框未被选中，将 selected_images 字典中对应的 image_path 键的值设为 False
+            # 如果复选框未选中，更新 selected_images 字典以将此图像标记为未选中状态。
             self.selected_images[image_path] = False
+
+            # 找到与此图像对应的视频路径。
+            video_path = self.get_corresponding_video_path(image_path)
+
+            if video_path:
+                # 如果找到相应的视频路径，则在 selected_videos 字典中将其标记为未选中状态。
+                self.selected_videos[video_path] = False
 
     def present_images(self):
         try:
@@ -249,31 +296,41 @@ class MyWindow(QMainWindow, Ui_MainWindow):
             print(f"Error in ImagePresenter: {e}")
 
     def integrate_videos(self):
+        self.Integrate.setEnabled(False)
 
-        # 这一行创建了一个名为 selected_images_paths 的列表，其中包含了那些在 self.selected_images 字典中对应的值为 True 的图像文件路径。
-        selected_images_paths = [path for path, selected in self.selected_images.items() if selected]
+        # 获取所有被选中的视频路径
+        selected_videos_paths = [path for path, selected in self.selected_videos.items() if selected]
 
-        if selected_images_paths: # 这段代码检查是否有已选图像
+        # 这段代码是测试哪里错了的
+        for video_path in selected_videos_paths:
+            if not os.path.exists(video_path):
+                print(f"Error: 文件 {video_path} 不存在")
+                return  # 如果发现文件不存在，直接返回，不继续执行后续代码
 
-            # 弹出文件选择对话框以选择整合后的视频文件的保存位置
+        if selected_videos_paths:
             output_file, _ = QFileDialog.getSaveFileName(None, "Save Video File", "",
                                                          "Video Files (*.mp4);;All Files (*)")
             if output_file:
+                # 生成 VideoFileClip 对象列表
+                video_clips = [VideoFileClip(video_path, audio=True) for video_path in selected_videos_paths]
 
-                # 创建一个 VideoClipper 对象以将选定的图像合并为视频
-                video_clipper = VideoClipper(selected_images_paths, output_file)
-                video_clipper.progressChanged.connect(self.update_progress)
-                video_clipper.finished.connect(self.integration_finished)
-                video_clipper.start()
+                # 将视频剪辑整合在一起
+                final_clip = concatenate_videoclips(video_clips, method="compose")
+
+                # 将整合后的视频保存到指定路径
+                final_clip.write_videofile(output_file, fps=24)  # 可以调整 fps
+
+                # 提示用户整合完成
+                QMessageBox.information(self, "整合完成", "视频整合完成", QMessageBox.Ok)
         else:
-            QMessageBox.warning(None, "整合失败", "未选择图像", QMessageBox.Ok)
+            QMessageBox.warning(None, "整合失败", "未选择视频", QMessageBox.Ok)
+            self.Integrate.setEnabled(True)
 
     def integration_finished(self):
         print("整合完成")
         self.clip_rate.setValue(100)
         QMessageBox.information(self, "整合完成", "视频整合完成", QMessageBox.Ok)
-        self.Process.setEnabled(True)
-        self.Stop_process.setEnabled(True)
+        self.Integrate.setEnabled(True)
 
     def open_file_dialog(self):
         options = QFileDialog.Options()
