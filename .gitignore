@@ -5,3 +5,4 @@ output_video.avi
 video_*/
 video/
 venv
+*.mp4
