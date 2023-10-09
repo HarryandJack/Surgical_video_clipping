@@ -1,7 +1,7 @@
 import sys
 import cv2
 from PyQt5.QtWidgets import QApplication, QMainWindow, QMessageBox,QProgressBar, QSpacerItem, QSizePolicy, QDialog, QCheckBox, QWidget
-from PyQt5.QtWidgets import QFileDialog, QLabel, QGridLayout
+from PyQt5.QtWidgets import QFileDialog, QLabel, QGridLayout, QVBoxLayout
 from demo import Ui_MainWindow
 from scenedetect.video_splitter import split_video_ffmpeg
 import os
@@ -160,7 +160,14 @@ class MyWindow(QMainWindow, Ui_MainWindow):
                             lambda state, path=image_path: self.image_checkbox_changed(path, state))
 
                         # 将复选框添加到布局中，i // 5 表示行数，i % 5 表示列数
-                        layout.addWidget(checkbox, i // 5, i % 5)
+                        vbox = QVBoxLayout()
+
+                        # 将标签和复选框添加到垂直布局中
+                        vbox.addWidget(label)
+                        vbox.addWidget(checkbox)
+
+                        # 将垂直布局添加到网格布局中
+                        layout.addLayout(vbox, i // 5, i % 5)
 
                 # 将 widget 设置为滚动区域的子部件
                 self.ScrollArea.setWidget(widget)
