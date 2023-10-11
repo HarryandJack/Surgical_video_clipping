@@ -1,10 +1,13 @@
 import sys
 import cv2
 from PyQt5.QtWidgets import QApplication, QMainWindow, QMessageBox,QProgressBar, QSpacerItem, QSizePolicy, QDialog, QCheckBox, QWidget
-from PyQt5.QtWidgets import QFileDialog, QLabel, QGridLayout
+from PyQt5.QtWidgets import QFileDialog, QLabel, QGridLayout, QVBoxLayout
 from demo import Ui_MainWindow
 from scenedetect.video_splitter import split_video_ffmpeg
 import os
+from PyQt5.QtMultimediaWidgets import QVideoWidget
+from PyQt5.QtMultimedia import QMediaPlayer, QMediaContent
+from PyQt5.QtCore import QUrl
 import re
 from VideoClipper import VideoClipper
 from VideoProcessor import VideoProcessor
@@ -17,7 +20,45 @@ from moviepy.editor import VideoFileClip, concatenate_videoclips
 from moviepy.video.io.ffmpeg_tools import ffmpeg_extract_subclip
 from moviepy.video.io.VideoFileClip import VideoFileClip
 
+class PreviewWindow(QMainWindow):
+    def __init__(self, video_path):
+        super().__init__()
+        self.setWindowTitle("视频预览")
+        self.setGeometry(100, 100, 640, 480)
 
+        self.video_path = video_path
+
+        self.label = QLabel(self)
+        self.label.setGeometry(10, 10, 620, 400)
+
+        self.progress_bar = QProgressBar(self)
+        self.progress_bar.setGeometry(10, 420, 620, 30)
+        self.progress_bar.setValue(0)
+
+        self.show_video()
+
+    def show_video(self):
+        # 在label中展示视频预览
+        video_player = QMediaPlayer()
+        video_player.setMedia(QMediaContent(QUrl.fromLocalFile(self.video_path)))
+        video_player.setVideoOutput(self.label)
+        video_player.stateChanged.connect(self.handle_state_changed)
+        video_player.setPosition(0)
+        video_player.play()
+
+        # 进度条更新
+        while video_player.state() == QMediaPlayer.PlayingState:
+            position = video_player.position()
+            duration = video_player.duration()
+            progress = int((position / duration) * 100)
+            self.progress_bar.setValue(progress)
+            QApplication.processEvents()
+
+    def handle_state_changed(self, state):
+        if state == QMediaPlayer.EndOfMedia:
+            self.progress_bar.setValue(100)
+            self.progress_bar.repaint()
+            self.close()
 # MyWindow 类继承了两个类的功能，一方面它是一个主窗口，拥有主窗口的功能，另一方面它也拥有从 Ui_MainWindow 类继承而来的界面设计
 class MyWindow(QMainWindow, Ui_MainWindow):
     def __init__(self):
@@ -38,8 +79,9 @@ class MyWindow(QMainWindow, Ui_MainWindow):
         By ensuring that the self.Integrate.clicked.connect(self.integrate_videos) line comes after the creation of self.selected_videos,
         you make sure that the dictionary is available when self.integrate_videos is called.
         """
+        self.integrated_video_path = None
         self.Integrate.clicked.connect(self.integrate_videos)
-
+        self.Preview.clicked.connect(self.preview_video)
 
     def count_images_in_folder(self, folder_path):
         # 获取指定文件夹内的所有文件和子目录
@@ -160,7 +202,14 @@ class MyWindow(QMainWindow, Ui_MainWindow):
                             lambda state, path=image_path: self.image_checkbox_changed(path, state))
 
                         # 将复选框添加到布局中，i // 5 表示行数，i % 5 表示列数
-                        layout.addWidget(checkbox, i // 5, i % 5)
+                        vbox = QVBoxLayout()
+
+                        # 将标签和复选框添加到垂直布局中
+                        vbox.addWidget(label)
+                        vbox.addWidget(checkbox)
+
+                        # 将垂直布局添加到网格布局中
+                        layout.addLayout(vbox, i // 5, i % 5)
 
                 # 将 widget 设置为滚动区域的子部件
                 self.ScrollArea.setWidget(widget)
@@ -198,11 +247,29 @@ class MyWindow(QMainWindow, Ui_MainWindow):
                 # 将整合后的视频保存到指定路径
                 final_clip.write_videofile(output_file, fps=24)  # 可以调整 fps
 
+                self.integrated_video_path = output_file
+
                 # 提示用户整合完成
-                QMessageBox.information(self, "整合完成", "视频整合完成", QMessageBox.Ok)
+                reply = QMessageBox.question(self, "整合完成", "视频整合完成，是否要打开合并好的视频？",
+                                             QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+                if reply == QMessageBox.Yes:
+                    # 打开合并好的视频
+                    os.system(f'start {output_file}')
+
         else:
             QMessageBox.warning(None, "整合失败", "未选择视频", QMessageBox.Ok)
             self.Integrate.setEnabled(True)
+
+    def preview_video(self):
+        options = QFileDialog.Options()
+        video_path, _ = QFileDialog.getOpenFileName(self, "选择视频文件", "", "视频文件 (*.mp4 *.avi);;All Files (*)",
+                                                    options=options)
+
+        if video_path:
+            preview_window = PreviewWindow(video_path)
+            preview_window.show()
+
+
 
     def integration_finished(self):
         print("整合完成")
@@ -231,7 +298,7 @@ class MyWindow(QMainWindow, Ui_MainWindow):
                                                       "CSV Files (*.csv);;All Files (*)")
             if csv_path:  # 检查用户是否选择了 CSV 文件
                 self.video_processor = VideoProcessor(self.file_path, csv_path)  # 传递 csv_path
-                self.video_processor.progressChanged.connect(self.update_progress)
+                self.video_processor.progressChanged.connect(self.update_process_progress)
                 self.video_processor.finished.connect(self.process_finished)
                 self.video_processor.start()
             else:
