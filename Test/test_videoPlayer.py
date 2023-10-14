@@ -1,60 +1,96 @@
 import sys
 import cv2
-from PyQt5.QtWidgets import QApplication, QDialog, QLabel, QVBoxLayout, QPushButton
-from PyQt5.QtCore import QTimer, Qt
-from PyQt5.QtGui import QPixmap
-from PyQt5.QtMultimedia import QMediaPlayer, QMediaContent
-from PyQt5.QtMultimediaWidgets import QVideoWidget
-from PyQt5.QtCore import QUrl
+from PyQt5.QtWidgets import QApplication, QMainWindow, QMessageBox,QProgressBar, QSpacerItem, QSizePolicy, QDialog, QCheckBox, QWidget
+from PyQt5.QtWidgets import QFileDialog, QLabel, QGridLayout, QVBoxLayout
+from demo import Ui_MainWindow
+from video_1 import Ui_Form
+from mainWindow import *
+from childWindow import *
+from PyQt5.QtGui import QPixmap, QPainter
+from PyQt5.QtCore import pyqtSignal, QThread, Qt
+from scenedetect import open_video, ContentDetector, SceneManager
+from scenedetect.stats_manager import StatsManager
+from moviepy.editor import *
+from moviepy.editor import VideoFileClip, concatenate_videoclips
+from moviepy.video.io.ffmpeg_tools import ffmpeg_extract_subclip
+from moviepy.video.io.VideoFileClip import VideoFileClip
+from PyQt5.QtMultimedia import QMediaContent, QMediaPlayer
+from PyQt5.QtWidgets import QFileDialog, QApplication
+from PyQt5 import uic
 
-class VideoPreviewDialog(QDialog):
-    def __init__(self, video_path):
+
+# mainWindow
+class MyMainWindow(QMainWindow, Ui_MainWindow):
+    def __init__(self):
+        super(MyMainWindow, self).__init__()
+        self.setupUi(self)
+
+        self.setGeometry(0, 0, 1024, 600)
+        self.setWindowTitle('main window')
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        pixmap = QPixmap("./image/bg.jpg")
+        painter.drawPixmap(self.rect(), pixmap)
+
+    def keyPressEvent(self, e):
+        if e.key() == Qt.Key_Escape:
+            self.close()
+
+
+class videoPlayer(QWidget, Ui_Form):
+    def __init__(self):
         super().__init__()
+        uic.loadUi('video_1.ui', self)  # Load the UI file and set it up
+        # 播放器
+        self.player = QMediaPlayer()
+        self.player.setVideoOutput(self.wgt_player)  # Removed self.ui
+        # 按钮
+        self.btn_select.clicked.connect(self.open)  # Removed self.ui
+        self.btn_play_pause.clicked.connect(self.playPause)  # Removed self.ui
+        # 进度条
+        self.player.durationChanged.connect(self.getDuration)
+        self.player.positionChanged.connect(self.getPosition)
+        self.sld_duration.sliderMoved.connect(self.updatePosition)  # Removed self.ui
 
-        self.setWindowTitle("视频预览")
-        self.setGeometry(100, 100, 640, 480)
+    # 打开视频文件
+    def open(self):
+        self.player.setMedia(QMediaContent(QFileDialog.getOpenFileUrl()[0]))
+        self.player.play()
 
-        self.video_path = video_path
+    def playPause(self):
+        if self.player.state() == 1:
+            self.player.pause()
+        else:
+            self.player.play()
 
-        self.video_widget = QVideoWidget(self)
-        self.video_widget.setGeometry(10, 10, 620, 400)
+    def getDuration(self, d):
+        self.sld_duration.setRange(0, d)  # Note: removed self.ui
 
-        self.play_button = QPushButton("播放", self)
-        self.play_button.setGeometry(10, 420, 100, 30)
-        self.play_button.clicked.connect(self.play_video)
+    def getPosition(self, p):
+        self.sld_duration.setValue(p)  # Note: removed self.ui
+        self.displayTime(self.sld_duration.maximum() - p)
 
-        self.pause_button = QPushButton("暂停", self)
-        self.pause_button.setGeometry(120, 420, 100, 30)
-        self.pause_button.clicked.connect(self.pause_video)
+    def displayTime(self, ms):
+        minutes = int(ms / 60000)
+        seconds = int((ms - minutes * 60000) / 1000)
+        self.lab_duration.setText('{}:{}'.format(minutes, seconds))  # Note: removed self.ui
 
-        self.stop_button = QPushButton("停止", self)
-        self.stop_button.setGeometry(230, 420, 100, 30)
-        self.stop_button.clicked.connect(self.stop_video)
+    def updatePosition(self, v):
+        self.player.setPosition(v)
+        self.displayTime(self.sld_duration.maximum() - v)
 
-        self.close_button = QPushButton("关闭", self)
-        self.close_button.setGeometry(340, 420, 100, 30)
-        self.close_button.clicked.connect(self.close)
-
-        self.media_player = QMediaPlayer()
-        self.media_player.setMedia(QMediaContent(QUrl.fromLocalFile(self.video_path)))
-        self.media_player.setVideoOutput(self.video_widget)
-
-    def play_video(self):
-        self.media_player.play()
-
-    def pause_video(self):
-        self.media_player.pause()
-
-    def stop_video(self):
-        self.media_player.stop()
-
-    def closeEvent(self, event):
-        self.media_player.stop()
-        super().closeEvent(event)
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
-    video_path = "D:\\Postgra\\Throat surgery clip.mp4"  # Replace with your video path
-    preview_dialog = VideoPreviewDialog(video_path)
-    preview_dialog.show()
+
+    main = MyMainWindow()
+
+    video = videoPlayer()
+
+    btn = main.pushButton  # 主窗体按钮事件绑定
+    btn.clicked.connect(video.show)
+
+    main.show()
     sys.exit(app.exec_())
+
