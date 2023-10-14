@@ -1,10 +1,14 @@
 import sys
 import cv2
 from PyQt5.QtWidgets import QApplication, QMainWindow, QMessageBox,QProgressBar, QSpacerItem, QSizePolicy, QDialog, QCheckBox, QWidget
-from PyQt5.QtWidgets import QFileDialog, QLabel, QGridLayout
+from PyQt5.QtWidgets import QFileDialog, QLabel, QGridLayout, QVBoxLayout
 from demo import Ui_MainWindow
+from video_1 import Ui_Form
 from scenedetect.video_splitter import split_video_ffmpeg
 import os
+from PyQt5.QtMultimediaWidgets import QVideoWidget
+from PyQt5.QtMultimedia import QMediaPlayer, QMediaContent
+from PyQt5.QtCore import QUrl, QTimer
 import re
 from VideoClipper import VideoClipper
 from VideoProcessor import VideoProcessor
@@ -16,6 +20,11 @@ from moviepy.editor import *
 from moviepy.editor import VideoFileClip, concatenate_videoclips
 from moviepy.video.io.ffmpeg_tools import ffmpeg_extract_subclip
 from moviepy.video.io.VideoFileClip import VideoFileClip
+from PyQt5.QtMultimedia import QMediaContent, QMediaPlayer
+from PyQt5.QtWidgets import QFileDialog, QApplication
+from PyQt5 import uic
+
+# Pyqt5预览视频需要添加LAV视频解码器才能播放
 
 
 # MyWindow 类继承了两个类的功能，一方面它是一个主窗口，拥有主窗口的功能，另一方面它也拥有从 Ui_MainWindow 类继承而来的界面设计
@@ -38,8 +47,13 @@ class MyWindow(QMainWindow, Ui_MainWindow):
         By ensuring that the self.Integrate.clicked.connect(self.integrate_videos) line comes after the creation of self.selected_videos,
         you make sure that the dictionary is available when self.integrate_videos is called.
         """
+        self.integrated_video_path = None
         self.Integrate.clicked.connect(self.integrate_videos)
+        self.video_player = videoPlayer()  # 创建 videoPlayer 实例
+        self.Preview.clicked.connect(self.show_video_player)  # 连接按钮点击事件
 
+    def show_video_player(self):
+        self.video_player.show()
 
     def count_images_in_folder(self, folder_path):
         # 获取指定文件夹内的所有文件和子目录
@@ -50,6 +64,8 @@ class MyWindow(QMainWindow, Ui_MainWindow):
 
         # 返回图片数量
         return len(images)
+
+
 
     def get_corresponding_video_path(self, image_path):
         """
@@ -160,19 +176,20 @@ class MyWindow(QMainWindow, Ui_MainWindow):
                             lambda state, path=image_path: self.image_checkbox_changed(path, state))
 
                         # 将复选框添加到布局中，i // 5 表示行数，i % 5 表示列数
-                        layout.addWidget(checkbox, i // 5, i % 5)
+                        vbox = QVBoxLayout()
+
+                        # 将标签和复选框添加到垂直布局中
+                        vbox.addWidget(label)
+                        vbox.addWidget(checkbox)
+
+                        # 将垂直布局添加到网格布局中
+                        layout.addLayout(vbox, i // 5, i % 5)
 
                 # 将 widget 设置为滚动区域的子部件
                 self.ScrollArea.setWidget(widget)
 
         except Exception as e:
             print(f"Error in ImagePresenter: {e}")
-
-    from moviepy.editor import VideoFileClip, clips_array
-
-    from moviepy.editor import VideoFileClip, concatenate_videoclips
-
-    # ...
 
     def integrate_videos(self):
         self.Integrate.setEnabled(False)
@@ -198,11 +215,20 @@ class MyWindow(QMainWindow, Ui_MainWindow):
                 # 将整合后的视频保存到指定路径
                 final_clip.write_videofile(output_file, fps=24)  # 可以调整 fps
 
+                self.integrated_video_path = output_file
+
                 # 提示用户整合完成
-                QMessageBox.information(self, "整合完成", "视频整合完成", QMessageBox.Ok)
+                reply = QMessageBox.question(self, "整合完成", "视频整合完成，是否要打开合并好的视频？",
+                                             QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+                if reply == QMessageBox.Yes:
+                    # 打开合并好的视频
+                    os.system(f'start {output_file}')
+
         else:
             QMessageBox.warning(None, "整合失败", "未选择视频", QMessageBox.Ok)
             self.Integrate.setEnabled(True)
+
+
 
     def integration_finished(self):
         print("整合完成")
@@ -231,7 +257,7 @@ class MyWindow(QMainWindow, Ui_MainWindow):
                                                       "CSV Files (*.csv);;All Files (*)")
             if csv_path:  # 检查用户是否选择了 CSV 文件
                 self.video_processor = VideoProcessor(self.file_path, csv_path)  # 传递 csv_path
-                self.video_processor.progressChanged.connect(self.update_progress)
+                self.video_processor.progressChanged.connect(self.update_process_progress)
                 self.video_processor.finished.connect(self.process_finished)
                 self.video_processor.start()
             else:
@@ -296,8 +322,55 @@ class MyWindow(QMainWindow, Ui_MainWindow):
     def update_process_progress(self, progress):
         self.process_rate.setValue(progress)
 
+
+
+class videoPlayer(QWidget, Ui_Form):
+    def __init__(self):
+        super().__init__()
+        uic.loadUi('video_1.ui', self)  # Load the UI file and set it up
+        # 播放器
+        self.player = QMediaPlayer()
+        self.player.setVideoOutput(self.wgt_player)  # Removed self.ui
+        # 按钮
+        self.btn_select.clicked.connect(self.open)  # Removed self.ui
+        self.btn_play_pause.clicked.connect(self.playPause)  # Removed self.ui
+        # 进度条
+        self.player.durationChanged.connect(self.getDuration)
+        self.player.positionChanged.connect(self.getPosition)
+        self.sld_duration.sliderMoved.connect(self.updatePosition)  # Removed self.ui
+
+    # 打开视频文件
+    def open(self):
+        self.player.setMedia(QMediaContent(QFileDialog.getOpenFileUrl()[0]))
+        self.player.play()
+
+    def playPause(self):
+        if self.player.state() == 1:
+            self.player.pause()
+        else:
+            self.player.play()
+
+    def getDuration(self, d):
+        self.sld_duration.setRange(0, d)  # Note: removed self.ui
+
+    def getPosition(self, p):
+        self.sld_duration.setValue(p)  # Note: removed self.ui
+        self.displayTime(self.sld_duration.maximum() - p)
+
+    def displayTime(self, ms):
+        minutes = int(ms / 60000)
+        seconds = int((ms - minutes * 60000) / 1000)
+        self.lab_duration.setText('{}:{}'.format(minutes, seconds))  # Note: removed self.ui
+
+    def updatePosition(self, v):
+        self.player.setPosition(v)
+        self.displayTime(self.sld_duration.maximum() - v)
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     MyWindow = MyWindow()
+    VideoWindow = videoPlayer()
+
+    btn = MyWindow.Preview  # 主窗体按钮事件绑定
+    btn.clicked.connect(VideoWindow.show)
     MyWindow.show()
     sys.exit(app.exec_())
