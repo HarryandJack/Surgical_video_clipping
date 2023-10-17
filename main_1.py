@@ -4,21 +4,13 @@ from PyQt5.QtWidgets import QApplication, QMainWindow, QMessageBox,QProgressBar,
 from PyQt5.QtWidgets import QFileDialog, QLabel, QGridLayout, QVBoxLayout
 from demo import Ui_MainWindow
 from video_1 import Ui_Form
-from scenedetect.video_splitter import split_video_ffmpeg
-import os
-from PyQt5.QtMultimediaWidgets import QVideoWidget
-from PyQt5.QtMultimedia import QMediaPlayer, QMediaContent
-from PyQt5.QtCore import QUrl, QTimer
 import re
 from VideoClipper import VideoClipper
 from VideoProcessor import VideoProcessor
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtCore import pyqtSignal, QThread, Qt
-from scenedetect import open_video, ContentDetector, SceneManager
-from scenedetect.stats_manager import StatsManager
 from moviepy.editor import *
 from moviepy.editor import VideoFileClip, concatenate_videoclips
-from moviepy.video.io.ffmpeg_tools import ffmpeg_extract_subclip
 from moviepy.video.io.VideoFileClip import VideoFileClip
 from PyQt5.QtMultimedia import QMediaContent, QMediaPlayer
 from PyQt5.QtWidgets import QFileDialog, QApplication
@@ -262,8 +254,11 @@ class MyWindow(QMainWindow, Ui_MainWindow):
                 self.video_processor.start()
             else:
                 QMessageBox.warning(None, "处理失败", "未选择保存的 CSV 文件", QMessageBox.Ok)
+                self.Process.setEnabled(True)
+
         else:
             QMessageBox.warning(None, "处理失败", "未选择文件或文件无效", QMessageBox.Ok)
+            self.Process.setEnabled(True)
 
     def process_finished(self):
         self.process_rate.setValue(100)

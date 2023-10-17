@@ -1,8 +1,7 @@
 from PyQt5.QtCore import QThread, pyqtSignal
-from scenedetect import open_video, ContentDetector, SceneManager
-from scenedetect.stats_manager import StatsManager
-from scenedetect.video_splitter import split_video_ffmpeg
-from PyQt5.QtWidgets import QMessageBox
+from Tools.__init__ import open_video, ContentDetector, SceneManager
+from Tools.stats_manager import StatsManager
+from Tools.video_splitter import split_video_ffmpeg
 import os
 import cv2
 
