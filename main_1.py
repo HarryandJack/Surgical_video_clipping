@@ -369,8 +369,5 @@ if __name__ == '__main__':
     app = QApplication(sys.argv)
     MyWindow = MyWindow()
     VideoWindow = videoPlayer()
-
-    btn = MyWindow.Preview  # 主窗体按钮事件绑定
-    btn.clicked.connect(VideoWindow.show)
     MyWindow.show()
     sys.exit(app.exec_())
