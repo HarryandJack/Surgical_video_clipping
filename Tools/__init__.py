@@ -1,27 +1,6 @@
-# -*- coding: utf-8 -*-
-#
-#            PySceneDetect: Python-Based Video Scene Detector
-#   -------------------------------------------------------------------
-#     [  Site:    https://scenedetect.com                           ]
-#     [  Docs:    https://scenedetect.com/docs/                     ]
-#     [  Github:  https://github.com/Breakthrough/PySceneDetect/    ]
-#
-# Copyright (C) 2014-2023 Brandon Castellano <http://www.bcastell.com>.
-# PySceneDetect is licensed under the BSD 3-Clause License; see the
-# included LICENSE file, or visit one of the above pages for details.
-#
-"""The ``scenedetect`` module comes with helper functions to simplify common use cases.
-:func:`detect` can be used to perform scene detection on a video by path.  :func:`open_video`
-can be used to open a video for a
-:class:`SceneManager <scenedetect.scene_manager.SceneManager>`.
-"""
-
 from logging import getLogger
 from typing import List, Optional, Tuple, Union
 
-# OpenCV is a required package, but we don't have it as an explicit dependency since we
-# need to support both opencv-python and opencv-python-headless. Include some additional
-# context with the exception if this is the case.
 try:
     import cv2 as _
 except ModuleNotFoundError as ex:
@@ -42,11 +21,6 @@ from scenedetect.backends import (AVAILABLE_BACKENDS, VideoStreamCv2, VideoStrea
 from scenedetect.stats_manager import StatsManager, StatsFileCorrupt
 from scenedetect.scene_manager import SceneManager, save_images
 
-# [DEPRECATED] DO NOT USE.
-from scenedetect.video_manager import VideoManager
-
-# Used for module identification and when printing version & about info
-# (e.g. calling `scenedetect version` or `scenedetect about`).
 __version__ = '0.6.2'
 
 init_logger()
