@@ -1,77 +1,96 @@
 # -*- coding: utf-8 -*-
 #
-#            PySceneDetect: Python-Based Video Scene Detector
-#   -------------------------------------------------------------------
-#     [  Site:    https://scenedetect.com                           ]
-#     [  Docs:    https://scenedetect.com/docs/                     ]
-#     [  Github:  https://github.com/Breakthrough/PySceneDetect/    ]
-#
-# Copyright (C) 2014-2023 Brandon Castellano <http://www.bcastell.com>.
-# PySceneDetect is licensed under the BSD 3-Clause License; see the
-# included LICENSE file, or visit one of the above pages for details.
-#
-""":class:`ContentDetector` compares the difference in content between adjacent frames against a
-set threshold/score, which if exceeded, triggers a scene cut.
-
-This detector is available from the command-line as the `detect-content` command.
+"""
+class:`ContentDetector`
+比较相邻帧之间的内容差异
+设置阈值/分数，如果超过，将触发场景切换
 """
 from dataclasses import dataclass
 import math
+
+"""
+typing 模块中导入了 List、NamedTuple 和 Optional 这三个类。这些类可以用于在代码中明确指定变量、参数、返回值等的类型，以提高代码的可读性和可维护性。
+List 是用于表示列表的类型，NamedTuple 是用于创建命名元组的工具，Optional 则表示一个值可以是某种类型或者 None。
+"""
 from typing import List, NamedTuple, Optional
 
 import numpy
 import cv2
 
-from scenedetect.scene_detector import SceneDetector
+from Tools.scene_detector import SceneDetector
 
 
 def _mean_pixel_distance(left: numpy.ndarray, right: numpy.ndarray) -> float:
-    """Return the mean average distance in pixel values between `left` and `right`.
-    Both `left and `right` should be 2 dimensional 8-bit images of the same shape.
     """
+    这个函数的目的是计算两个图像 left 和 right 之间的平均像素值距离
+    """
+
+    # 确保传递给函数的图像都是二维的。left.shape 和 right.shape 分别表示图像 left 和 right 的形状。如果形状不是二维的，将会引发一个异常。
     assert len(left.shape) == 2 and len(right.shape) == 2
+
+    # 确保传递给函数的两个图像具有相同的形状
     assert left.shape == right.shape
+
+    # 这一行计算了图像中的像素总数，并将其存储在变量 num_pixels 中。left.shape[0] 和 left.shape[1] 分别表示图像的行数和列数
     num_pixels: float = float(left.shape[0] * left.shape[1])
+
+    # 它计算了两个图像中相应像素值的绝对差异，然后求和，并将其除以总像素数以获得平均值。最终的计算结果被返回给调用者
     return (numpy.sum(numpy.abs(left.astype(numpy.int32) - right.astype(numpy.int32))) / num_pixels)
 
 
 def _estimated_kernel_size(frame_width: int, frame_height: int) -> int:
-    """Estimate kernel size based on video resolution."""
-    # TODO: This equation is based on manual estimation from a few videos.
-    # Create a more comprehensive test suite to optimize against.
+    """
+    根据视频分辨率估算内核大小。
+
+    TODO: 这个方程基于对一些视频的手动估计。
+    需要创建一个更全面的测试套件来进行优化。
+
+    Arguments:
+        frame_width (int): 视频帧的宽度。
+        frame_height (int): 视频帧的高度。
+
+    Returns:
+        int: 估计的内核大小。
+    """
+    # 使用一个基于分辨率的公式来估算内核的大小。
     size: int = 4 + round(math.sqrt(frame_width * frame_height) / 192)
+
+    # 如果大小为偶数，将其增加1，以确保内核大小为奇数。
     if size % 2 == 0:
         size += 1
+
     return size
 
 
 class ContentDetector(SceneDetector):
-    """Detects fast cuts using changes in colour and intensity between frames.
+    """
+    通过帧间颜色和亮度的变化来检测快速切换。
 
-    Since the difference between frames is used, unlike the ThresholdDetector,
-    only fast cuts are detected with this method.  To detect slow fades between
-    content scenes still using HSV information, use the DissolveDetector.
+    由于使用了帧间的差异，与ThresholdDetector不同，
+    这种方法只能检测到快速切换。
+    若要仍然使用HSV信息检测内容场景之间的缓慢淡入淡出效果，请使用DissolveDetector。
     """
 
-    # TODO: Come up with some good weights for a new default if there is one that can pass
-    # a wider variety of test cases.
+    # TODO: 如果有一个可以通过更多测试用例的新默认值的话，请提供一些好的权重。
     class Components(NamedTuple):
-        """Components that make up a frame's score, and their default values."""
+        """构成帧得分的组件及其默认值。"""
         delta_hue: float = 1.0
-        """Difference between pixel hue values of adjacent frames."""
+        """相邻帧的像素色相值之间的差异。"""
         delta_sat: float = 1.0
-        """Difference between pixel saturation values of adjacent frames."""
+        """相邻帧的像素饱和度值之间的差异。"""
         delta_lum: float = 1.0
-        """Difference between pixel luma (brightness) values of adjacent frames."""
+        """相邻帧的像素亮度值之间的差异。"""
         delta_edges: float = 0.0
-        """Difference between calculated edges of adjacent frames.
+        """相邻帧的计算边缘之间的差异。
 
-        Edge differences are typically larger than the other components, so the detection
-        threshold may need to be adjusted accordingly."""
+        通常边缘的差异比其他组件大，因此可能需要相应地调整检测阈值。
+        """
 
     DEFAULT_COMPONENT_WEIGHTS = Components()
-    """Default component weights. Actual default values are specified in :class:`Components`
-    to allow adding new components without breaking existing usage."""
+    """
+    默认的组件权重。
+    实际的默认值在Components类中指定，以允许在不破坏现有用法的情况下添加新组件。
+    """
 
     LUMA_ONLY_WEIGHTS = Components(
         delta_hue=0.0,
@@ -79,25 +98,34 @@ class ContentDetector(SceneDetector):
         delta_lum=1.0,
         delta_edges=0.0,
     )
-    """Component weights to use if `luma_only` is set."""
+    """如果设置了`luma_only`，则使用的组件权重。"""
 
     FRAME_SCORE_KEY = 'content_val'
-    """Key in statsfile representing the final frame score after weighed by specified components."""
+    """
+    在统计文件中表示经过指定组件加权后的最终帧得分的键。
+    FRAME_SCORE_KEY 是一个字符串，它表示在统计文件中用于标识经过指定组件加权后的最终帧得分的键。这个键的值将用于记录每个帧的得分，以便后续分析和处理。
+    例如，如果在一个视频中检测到了多个场景变化，那么对于每个场景变化，都会有一个相应的帧得分与之关联
+    """
 
     METRIC_KEYS = [FRAME_SCORE_KEY, *Components._fields]
-    """All statsfile keys this detector produces."""
+    """
+    此检测器生成的所有统计文件键。
+    METRIC_KEYS 是一个列表，其中包含了所有用于记录在统计文件中的信息的键。
+    具体来说，它包括了 FRAME_SCORE_KEY，以及 Components 类中定义的所有组件（例如 delta_hue、delta_sat 等）的键。
+    这个列表提供了一个完整的记录指标，可以用于分析视频中的场景变化。
+    """
 
     @dataclass
     class _FrameData:
-        """Data calculated for a given frame."""
+        """计算给定帧所需的数据。"""
         hue: numpy.ndarray
-        """Frame hue map [2D 8-bit]."""
+        """帧的色相映射 [2D 8位]。"""
         sat: numpy.ndarray
-        """Frame saturation map [2D 8-bit]."""
+        """帧的饱和度映射 [2D 8位]。"""
         lum: numpy.ndarray
-        """Frame luma/brightness map [2D 8-bit]."""
+        """帧的亮度映射 [2D 8位]。"""
         edges: Optional[numpy.ndarray]
-        """Frame edge map [2D 8-bit, edges are 255, non edges 0]. Affected by `kernel_size`."""
+        """帧的边缘映射 [2D 8位，边缘为255，非边缘为0]。受`kernel_size`影响。"""
 
     def __init__(
         self,

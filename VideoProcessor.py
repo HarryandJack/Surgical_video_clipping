@@ -16,6 +16,9 @@ class VideoProcessor(QThread):
         self.file_path = file_path
         self.csv_path = csv_path
 
+    def set_content_detector_threshold(self, threshold):
+        ContentDetector.threshold = threshold
+
     def capture_representative_frame(self, video_path):
         # 检查是否存在 'images' 文件夹，如果不存在则创建
         if not os.path.exists(os.path.join(video_path, 'images')):
