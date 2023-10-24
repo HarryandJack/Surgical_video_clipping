@@ -6,3 +6,4 @@ video_*/
 video/
 venv
 *.mp4
+*.csv

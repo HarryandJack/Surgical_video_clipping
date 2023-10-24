@@ -43,6 +43,7 @@ class MyWindow(QMainWindow, Ui_MainWindow):
         self.Integrate.clicked.connect(self.integrate_videos)
         self.video_player = videoPlayer()  # 创建 videoPlayer 实例
         self.Preview.clicked.connect(self.show_video_player)  # 连接按钮点击事件
+        self.Confirm.clicked.connect(self.confirm_threshold)
 
     def show_video_player(self):
         self.video_player.show()
@@ -242,11 +243,23 @@ class MyWindow(QMainWindow, Ui_MainWindow):
         else:
             QMessageBox.warning(None, "导入失败", "未选择文件或文件无效", QMessageBox.Ok)
 
+    def confirm_threshold(self):
+        # 获取用户输入的阈值
+        threshold = float(self.Threshhold.text())
+
+        # 设置 ContentDetector 的阈值
+        self.video_processor.set_content_detector_threshold(threshold)
+
+        # 在这里可以做一些反馈给用户，比如弹出一个提示框告知用户阈值已经更新
+        QMessageBox.information(None, "阈值已更新", f"阈值已更新为 {threshold}", QMessageBox.Ok)
+
+    # process_video 方法中不再需要获取 threshold，因为它将在 confirm_threshold 方法中获取
     def process_video(self):
         self.Process.setEnabled(False)  # 禁用处理按钮
+
         if self.file_path:
-            csv_path, _ = QFileDialog.getSaveFileName(None, "Save CSV File", "",
-                                                      "CSV Files (*.csv);;All Files (*)")
+            csv_path, _ = QFileDialog.getSaveFileName(None, "Save CSV File", "", "CSV Files (*.csv);;All Files (*)")
+
             if csv_path:  # 检查用户是否选择了 CSV 文件
                 self.video_processor = VideoProcessor(self.file_path, csv_path)  # 传递 csv_path
                 self.video_processor.progressChanged.connect(self.update_process_progress)
@@ -255,7 +268,6 @@ class MyWindow(QMainWindow, Ui_MainWindow):
             else:
                 QMessageBox.warning(None, "处理失败", "未选择保存的 CSV 文件", QMessageBox.Ok)
                 self.Process.setEnabled(True)
-
         else:
             QMessageBox.warning(None, "处理失败", "未选择文件或文件无效", QMessageBox.Ok)
             self.Process.setEnabled(True)
