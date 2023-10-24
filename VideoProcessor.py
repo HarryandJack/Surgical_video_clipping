@@ -1,7 +1,7 @@
 from PyQt5.QtCore import QThread, pyqtSignal
 from Tools.__init__ import open_video
 from Tools.scene_manager import SceneManager
-from detectors import ContentDetector
+from detectors.content_detector import ContentDetector
 from Tools.stats_manager import StatsManager
 from Tools.video_splitter import split_video_ffmpeg
 import os
