@@ -137,16 +137,11 @@ class ContentDetector(SceneDetector):
     ):
         """
         Arguments:
-            threshold: Threshold the average change in pixel intensity must exceed to trigger a cut.
-            min_scene_len: Once a cut is detected, this many frames must pass before a new one can
-                be added to the scene list.
-            weights: Weight to place on each component when calculating frame score
-                (`content_val` in a statsfile, the value `threshold` is compared against).
-            luma_only: If True, only considers changes in the luminance channel of the video.
-                Equivalent to specifying `weights` as :data:`ContentDetector.LUMA_ONLY`.
-                Overrides `weights` if both are set.
-            kernel_size: Size of kernel for expanding detected edges. Must be odd integer
-                greater than or equal to 3. If None, automatically set using video resolution.
+            阈值:像素强度的平均变化必须超过阈值才能触发切割。
+            min_scene_len:一旦检测到一个剪切，在一个新的帧被添加到场景列表之前，必须经过这么多帧。
+            weights:在计算帧分数时放置在每个组件上的权重(statsfile中的“content_val”值与“threshold”值进行比较)。
+            luma_only:如果为True，只考虑视频亮度通道的变化。相当于将' weights '指定为:data: ' ContentDetector.LUMA_ONLY '。如果两个都设置了，则覆盖“权重”。
+            kernel_size:扩展检测边的内核大小。必须是大于或等于3的奇数。如果无，则根据视频分辨率自动设置。
         """
         super().__init__()
         self._threshold: float = threshold

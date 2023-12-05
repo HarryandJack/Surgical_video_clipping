@@ -1,30 +1,15 @@
-# -*- coding: utf-8 -*-
-#
-#            PySceneDetect: Python-Based Video Scene Detector
-#   -------------------------------------------------------------------
-#     [  Site:    https://scenedetect.com                           ]
-#     [  Docs:    https://scenedetect.com/docs/                     ]
-#     [  Github:  https://github.com/Breakthrough/PySceneDetect/    ]
-#
-# Copyright (C) 2014-2023 Brandon Castellano <http://www.bcastell.com>.
-# PySceneDetect is licensed under the BSD 3-Clause License; see the
-# included LICENSE file, or visit one of the above pages for details.
-#
-"""``scenedetect.scene_manager`` Module
+"""``scenedetect.scene_manager`` 模块
 
-This module implements :class:`SceneManager`, coordinates running a
-:mod:`SceneDetector <scenedetect.detectors>` over the frames of a video
-(:mod:`VideoStream <scenedetect.video_stream>`). Video decoding is done in a separate thread to
-improve performance.
+该模块实现了 :class:`SceneManager`，它协调在视频的帧上运行一个 :mod:`SceneDetector <scenedetect.detectors>`。
+视频解码在单独的线程中进行以提高性能。
 
-This module also contains other helper functions (e.g. :func:`save_images`) which can be used to
-process the resulting scene list.
+该模块还包含其他辅助函数（例如 :func:`save_images`），可用于处理生成的场景列表。
 
 ===============================================================
-Usage
+用法
 ===============================================================
 
-The following example shows basic usage of a :class:`SceneManager`:
+以下示例展示了如何基本使用 :class:`SceneManager`：
 
 .. code:: python
 
@@ -32,37 +17,35 @@ The following example shows basic usage of a :class:`SceneManager`:
     video = open_video(video_path)
     scene_manager = SceneManager()
     scene_manager.add_detector(ContentDetector())
-    # Detect all scenes in video from current position to end.
+    # 检测视频中从当前位置到结束的所有场景。
     scene_manager.detect_scenes(video)
-    # `get_scene_list` returns a list of start/end timecode pairs
-    # for each scene that was found.
+    # `get_scene_list` 返回每个找到的场景的开始/结束时间码对的列表。
     scenes = scene_manager.get_scene_list()
 
-An optional callback can also be invoked on each detected scene, for example:
+还可以在每个检测到的场景上调用一个可选的回调函数，例如：
 
 .. code:: python
 
     from scenedetect import open_video, SceneManager, ContentDetector
 
-    # Callback to invoke on the first frame of every new scene detection.
+    # 在每次检测到新场景时调用的回调函数。
     def on_new_scene(frame_img: numpy.ndarray, frame_num: int):
-        print("New scene found at frame %d." % frame_num)
+        print("在帧 %d 处发现新场景。" % frame_num)
 
     video = open_video(test_video_file)
     scene_manager = SceneManager()
     scene_manager.add_detector(ContentDetector())
     scene_manager.detect_scenes(video=video, callback=on_new_scene)
 
-To use a `SceneManager` with a webcam/device or existing `cv2.VideoCapture` device, use the
-:class:`VideoCaptureAdapter <scenedetect.backends.opencv.VideoCaptureAdapter>` instead of
-`open_video`.
+要使用 `SceneManager` 与网络摄像头/设备或现有的 `cv2.VideoCapture` 设备，可以使用
+:class:`VideoCaptureAdapter <scenedetect.backends.opencv.VideoCaptureAdapter>` 而不是
+`open_video`。
 
 =======================================================================
-Storing Per-Frame Statistics
+存储每帧的统计信息
 =======================================================================
 
-`SceneManager` can use an optional
-:class:`StatsManager <scenedetect.stats_manager.StatsManager>` to save frame statistics to disk:
+`SceneManager` 可以使用可选的 :class:`StatsManager <scenedetect.stats_manager.StatsManager>` 将帧统计信息保存到磁盘：
 
 .. code:: python
 
@@ -73,11 +56,10 @@ Storing Per-Frame Statistics
     scene_manager.detect_scenes(video=video)
     scene_list = scene_manager.get_scene_list()
     print_scenes(scene_list=scene_list)
-    # Save per-frame statistics to disk.
+    # 将每帧的统计信息保存到磁盘。
     scene_manager.stats_manager.save_to_csv(csv_file=STATS_FILE_PATH)
 
-The statsfile can be used to find a better threshold for certain inputs, or perform statistical
-analysis of the video.
+可以使用统计文件来找到某些输入的更好阈值，或对视频进行统计分析。
 """
 
 import csv
@@ -95,10 +77,10 @@ from scenedetect._thirdparty.simpletable import (SimpleTableCell, SimpleTableIma
                                                  SimpleTable, HTMLPage)
 
 from scenedetect.platform import (tqdm, get_and_create_path, get_cv2_imwrite_params, Template)
-from scenedetect.frame_timecode import FrameTimecode
-from scenedetect.video_stream import VideoStream
-from scenedetect.scene_detector import SceneDetector, SparseSceneDetector
-from scenedetect.stats_manager import StatsManager, FrameMetricRegistered
+from Tools.frame_timecode import FrameTimecode
+from Tools.video_stream import VideoStream
+from Tools.scene_detector import SceneDetector, SparseSceneDetector
+from Tools.stats_manager import StatsManager, FrameMetricRegistered
 
 logger = logging.getLogger('pyscenedetect')
 
@@ -130,18 +112,16 @@ class Interpolation(Enum):
 
 
 def compute_downscale_factor(frame_width: int, effective_width: int = DEFAULT_MIN_WIDTH) -> int:
-    """Get the optimal default downscale factor based on a video's resolution (currently only
-    the width in pixels is considered).
+    """根据视频的分辨率（目前仅考虑像素宽度），获取最佳的默认缩小因子。
 
-    The resulting effective width of the video will be between frame_width and 1.5 * frame_width
-    pixels (e.g. if frame_width is 200, the range of effective widths will be between 200 and 300).
+    得到的视频有效宽度将在 frame_width 和 1.5 * frame_width 像素之间（例如，如果 frame_width 为 200，那么有效宽度的范围将在 200 到 300 之间）。
 
-    Arguments:
-        frame_width: Actual width of the video frame in pixels.
-        effective_width: Desired minimum width in pixels.
+    参数:
+    frame_width: 视频帧的实际宽度，以像素为单位。
+    effective_width: 所需的最小宽度，以像素为单位。
 
-    Returns:
-        int: The defalt downscale factor to use to achieve at least the target effective_width.
+    返回:
+    int: 用于至少达到目标 effective_width 的默认缩小因子。
     """
     assert not (frame_width < 1 or effective_width < 1)
     if frame_width < effective_width:
@@ -366,53 +346,39 @@ def save_images(scene_list: List[Tuple[FrameTimecode, FrameTimecode]],
                 width: Optional[int] = None,
                 interpolation: Interpolation = Interpolation.CUBIC,
                 video_manager=None) -> Dict[int, List[str]]:
-    """Save a set number of images from each scene, given a list of scenes
-    and the associated video/frame source.
+    """根据给定的场景列表和相关的视频/帧源，保存每个场景中的一定数量的图像。
 
-    Arguments:
-        scene_list: A list of scenes (pairs of FrameTimecode objects) returned
-            from calling a SceneManager's detect_scenes() method.
-        video: A VideoStream object corresponding to the scene list.
-            Note that the video will be closed/re-opened and seeked through.
-        num_images: Number of images to generate for each scene.  Minimum is 1.
-        frame_margin: Number of frames to pad each scene around the beginning
-            and end (e.g. moves the first/last image into the scene by N frames).
-            Can set to 0, but will result in some video files failing to extract
-            the very last frame.
-        image_extension: Type of image to save (must be one of 'jpg', 'png', or 'webp').
-        encoder_param: Quality/compression efficiency, based on type of image:
-            'jpg' / 'webp':  Quality 0-100, higher is better quality.  100 is lossless for webp.
-            'png': Compression from 1-9, where 9 achieves best filesize but is slower to encode.
-        image_name_template: Template to use when creating the images on disk. Can
-            use the macros $VIDEO_NAME, $SCENE_NUMBER, and $IMAGE_NUMBER. The image
-            extension is applied automatically as per the argument image_extension.
-        output_dir: Directory to output the images into.  If not set, the output
-            is created in the working directory.
-        show_progress: If True, shows a progress bar if tqdm is installed.
-        scale: Optional factor by which to rescale saved images. A scaling factor of 1 would
-            not result in rescaling. A value < 1 results in a smaller saved image, while a
-            value > 1 results in an image larger than the original. This value is ignored if
-            either the height or width values are specified.
-        height: Optional value for the height of the saved images. Specifying both the height
-            and width will resize images to an exact size, regardless of aspect ratio.
-            Specifying only height will rescale the image to that number of pixels in height
-            while preserving the aspect ratio.
-        width: Optional value for the width of the saved images. Specifying both the width
-            and height will resize images to an exact size, regardless of aspect ratio.
-            Specifying only width will rescale the image to that number of pixels wide
-            while preserving the aspect ratio.
-        interpolation: Type of interpolation to use when resizing images.
-        video_manager: [DEPRECATED] DO NOT USE. For backwards compatibility only.
+参数:
+    scene_list: 从调用SceneManager的detect_scenes()方法返回的场景列表（由FrameTimecode对象成对组成）。
+    video: 与场景列表相对应的VideoStream对象。
+        请注意，视频将会被关闭/重新打开并在其中进行搜索。
+    num_images: 每个场景要生成的图像数量。最小值为1。
+    frame_margin: 在每个场景的开头和结尾周围填充的帧数（例如，将第一个/最后一个图像移动到场景中N帧）。
+        可以设置为0，但会导致某些视频文件无法提取最后一帧。
+    image_extension: 要保存的图像类型（必须是'jpg'、'png'或'webp'之一）。
+    encoder_param: 压缩效率/质量参数，根据图像类型而定:
+        'jpg' / 'webp': 0-100的质量，值越高质量越好。对于webp，100是无损的。
+        'png': 从1-9的压缩等级，9获得最佳文件大小但编码速度较慢。
+    image_name_template: 在创建磁盘上的图像时要使用的模板。可以使用宏$VIDEO_NAME，$SCENE_NUMBER和$IMAGE_NUMBER。
+        图像扩展名将根据参数image_extension自动应用。
+    output_dir: 输出图像的目录。如果未设置，则将在当前工作目录中创建输出目录。
+    show_progress: 如果为True，则在安装了tqdm时显示进度条。
+    scale: 保存图像的可选缩放因子。缩放因子为1将不会进行缩放。值<1会导致较小的保存图像，而值>1会导致比原始图像大的图像。
+        如果指定了高度或宽度值，则将忽略此值。
+    height: 保存图像的可选高度值。同时指定高度和宽度将会将图像调整为确切的大小，而不考虑纵横比。
+        仅指定高度将会将图像调整为在保持纵横比的情况下拥有指定高度像素数。
+    width: 保存图像的可选宽度值。同时指定宽度和高度将会将图像调整为确切的大小，而不考虑纵横比。
+        仅指定宽度将会将图像调整为在保持纵横比的情况下拥有指定宽度像素数。
+    interpolation: 调整图像大小时要使用的插值类型。
+    video_manager: [已弃用] 请勿使用。仅用于向后兼容性。
 
-    Returns:
-        Dictionary of the format { scene_num : [image_paths] }, where scene_num is the
-        number of the scene in scene_list (starting from 1), and image_paths is a list of
-        the paths to the newly saved/created images.
+返回:
+    字典，格式为 { 场景编号 : [图像路径] }，其中场景编号是scene_list中的场景编号（从1开始），图像路径是新保存/创建的图像的路径列表。
 
-    Raises:
-        ValueError: Raised if any arguments are invalid or out of range (e.g.
-        if num_images is negative).
-    """
+抛出:
+    ValueError: 如果任何参数无效或超出范围（例如，如果num_images为负数）。
+"""
+
     # TODO(v0.7): Add DeprecationWarning that `video_manager` will be removed in v0.8.
     if video_manager is not None:
         logger.error('`video_manager` argument is deprecated, use `video` instead.')
@@ -536,15 +502,11 @@ def save_images(scene_list: List[Tuple[FrameTimecode, FrameTimecode]],
     return image_filenames
 
 
-##
-## SceneManager Class Implementation
-##
 
 
 class SceneManager:
-    """The SceneManager facilitates detection of scenes (:meth:`detect_scenes`) on a video
-    (:class:`VideoStream <scenedetect.video_stream.VideoStream>`) using a detector
-    (:meth:`add_detector`). Video decoding is done in parallel in a background thread.
+    """SceneManager 管理视频中的场景检测(:meth:`detect_scenes`)，使用检测器(:meth:`add_detector`)。
+    视频解码在后台线程中进行。
     """
 
     def __init__(
@@ -552,41 +514,39 @@ class SceneManager:
         stats_manager: Optional[StatsManager] = None,
     ):
         """
-        Arguments:
-            stats_manager: :class:`StatsManager` to bind to this `SceneManager`. Can be
-                accessed via the `stats_manager` property of the resulting object to save to disk.
+        参数:
+            stats_manager: 要绑定到此 `SceneManager` 的 :class:`StatsManager`。
+                可以通过生成的对象的 `stats_manager` 属性来访问以保存到磁盘。
         """
-        self._cutting_list = []
-        self._event_list = []
-        self._detector_list = []
-        self._sparse_detector_list = []
-        # TODO(v1.0): This class should own a StatsManager instead of taking an optional one.
-        # Expose a new `stats_manager` @property from the SceneManager, and either change the
-        # `stats_manager` argument to to `store_stats: bool=False`, or lazy-init one.
+        self._cutting_list = []  # 切割列表
+        self._event_list = []  # 事件列表
+        self._detector_list = []  # 检测器列表
+        self._sparse_detector_list = []  # 稀疏检测器列表
 
-        # TODO(v1.0): This class should own a VideoStream as well, instead of passing one
-        # to the detect_scenes method. If concatenation is required, it can be implemented as
-        # a generic VideoStream wrapper.
+        # TODO(v1.0): 这个类应该拥有一个 StatsManager，而不是接受一个可选的 StatsManager。
+        # 通过 `stats_manager` 属性访问结果对象，以便保存到磁盘。
         self._stats_manager: Optional[StatsManager] = stats_manager
 
-        # Position of video that was first passed to detect_scenes.
+        # TODO(v1.0): 这个类也应该拥有一个 VideoStream，而不是将其传递给 detect_scenes 方法。
+        # 如果需要连接，可以实现为一个通用的 VideoStream 包装器。
+
+        # 视频第一次传递到 detect_scenes 的位置。
         self._start_pos: FrameTimecode = None
-        # Position of video on the last frame processed by detect_scenes.
+        # detect_scenes 处理的最后一帧的视频位置。
         self._last_pos: FrameTimecode = None
         self._base_timecode: Optional[FrameTimecode] = None
         self._downscale: int = 1
         self._auto_downscale: bool = True
-        # Interpolation method to use when downscaling. Defaults to linear interpolation
-        # as a good balance between quality and performance.
+        # 缩小时要使用的插值方法。默认为线性插值，以在质量和性能之间取得良好的平衡。
         self._interpolation: Interpolation = Interpolation.LINEAR
-        # Boolean indicating if we have only seen EventType.CUT events so far.
+        # 布尔值，指示到目前为止我们只看到 EventType.CUT 事件。
         self._only_cuts: bool = True
-        # Set by decode thread when an exception occurs.
+        # 在解码线程中发生异常时设置。
         self._exception_info = None
         self._stop = threading.Event()
 
-        self._frame_buffer = []
-        self._frame_buffer_size = 0
+        self._frame_buffer = []  # 帧缓冲区
+        self._frame_buffer_size = 0  # 帧缓冲区大小
 
     @property
     def interpolation(self) -> Interpolation:
@@ -632,13 +592,14 @@ class SceneManager:
         self._auto_downscale = value
 
     def add_detector(self, detector: SceneDetector) -> None:
-        """Add/register a SceneDetector (e.g. ContentDetector, ThresholdDetector) to
-        run when detect_scenes is called. The SceneManager owns the detector object,
-        so a temporary may be passed.
-
-        Arguments:
-            detector (SceneDetector): Scene detector to add to the SceneManager.
         """
+    将 SceneDetector（例如 ContentDetector、ThresholdDetector）添加/注册到在调用 detect_scenes 时运行。
+    SceneManager 拥有检测器对象，因此可以传递临时对象。
+
+    参数:
+    detector (SceneDetector): 要添加到 SceneManager 的场景检测器。
+        """
+
         if self._stats_manager is None and detector.stats_manager_required():
             # Make sure the lists are empty so that the detectors don't get
             # out of sync (require an explicit statsmanager instead)
@@ -668,13 +629,14 @@ class SceneManager:
         return len(self._detector_list)
 
     def clear(self) -> None:
-        """Clear all cuts/scenes and resets the SceneManager's position.
-
-        Any statistics generated are still saved in the StatsManager object passed to the
-        SceneManager's constructor, and thus, subsequent calls to detect_scenes, using the same
-        frame source seeked back to the original time (or beginning of the video) will use the
-        cached frame metrics that were computed and saved in the previous call to detect_scenes.
         """
+    清除所有的切割/场景，并重置 SceneManager 的位置。
+
+    生成的任何统计信息仍然保存在传递给 SceneManager 构造函数的 StatsManager 对象中，
+    因此，后续对 detect_scenes 的调用，使用相同的帧源定位回原始时间（或视频的开始），
+    将使用在先前对 detect_scenes 的调用中计算并保存的缓存帧指标。
+        """
+
         self._cutting_list.clear()
         self._event_list.clear()
         self._last_pos = None
@@ -689,20 +651,19 @@ class SceneManager:
     def get_scene_list(self,
                        base_timecode: Optional[FrameTimecode] = None,
                        start_in_scene: bool = False) -> List[Tuple[FrameTimecode, FrameTimecode]]:
-        """Return a list of tuples of start/end FrameTimecodes for each detected scene.
+        """
+    返回一个包含每个检测到的场景的起始/结束帧时间码的列表。
 
-        Arguments:
-            base_timecode: [DEPRECATED] DO NOT USE. For backwards compatibility.
-            start_in_scene: Assume the video begins in a scene. This means that when detecting
-                fast cuts with `ContentDetector`, if no cuts are found, the resulting scene list
-                will contain a single scene spanning the entire video (instead of no scenes).
-                When detecting fades with `ThresholdDetector`, the beginning portion of the video
-                will always be included until the first fade-out event is detected.
+    参数:
+        - base_timecode: [已弃用] 请勿使用。用于向后兼容。
+        - start_in_scene: 假设视频开始于一个场景。这意味着当使用 `ContentDetector` 进行快速切割检测时，
+        如果未发现任何切割，则生成的场景列表将包含一个跨足整个视频的单个场景（而不是没有场景）。
+        当使用 `ThresholdDetector` 进行淡入淡出检测时，视频的起始部分将始终包括在内，
+        直到检测到第一个淡出事件。
 
-        Returns:
-            List of tuples in the form (start_time, end_time), where both start_time and
-            end_time are FrameTimecode objects representing the exact time/frame where each
-            detected scene in the video begins and ends.
+    返回:
+        一个由元组组成的列表，每个元组的形式为 (start_time, end_time)，
+        其中 start_time 和 end_time 都是 FrameTimecode 对象，表示视频中每个检测到的场景开始和结束的确切时间/帧。
         """
         # TODO(v0.7): Replace with DeprecationWarning that `base_timecode` will be removed in v0.8.
         if base_timecode is not None:
@@ -781,36 +742,31 @@ class SceneManager:
                       show_progress: bool = False,
                       callback: Optional[Callable[[np.ndarray, int], None]] = None,
                       frame_source: Optional[VideoStream] = None) -> int:
-        """Perform scene detection on the given video using the added SceneDetectors, returning the
-        number of frames processed. Results can be obtained by calling :meth:`get_scene_list` or
-        :meth:`get_cut_list`.
-
-        Video decoding is performed in a background thread to allow scene detection and frame
-        decoding to happen in parallel. Detection will continue until no more frames are left,
-        the specified duration or end time has been reached, or :meth:`stop` was called.
-
-        Arguments:
-            video: VideoStream obtained from either `scenedetect.open_video`, or by creating
-                one directly (e.g. `scenedetect.backends.opencv.VideoStreamCv2`).
-            duration: Amount of time to detect from current video position. Cannot be
-                specified if `end_time` is set.
-            end_time: Time to stop processing at. Cannot be specified if `duration` is set.
-            frame_skip: Not recommended except for extremely high framerate videos.
-                Number of frames to skip (i.e. process every 1 in N+1 frames,
-                where N is frame_skip, processing only 1/N+1 percent of the video,
-                speeding up the detection time at the expense of accuracy).
-                `frame_skip` **must** be 0 (the default) when using a StatsManager.
-            show_progress: If True, and the ``tqdm`` module is available, displays
-                a progress bar with the progress, framerate, and expected time to
-                complete processing the video frame source.
-            callback: If set, called after each scene/event detected.
-            frame_source: [DEPRECATED] DO NOT USE. For compatibility with previous version.
-        Returns:
-            int: Number of frames read and processed from the frame source.
-        Raises:
-            ValueError: `frame_skip` **must** be 0 (the default) if the SceneManager
-                was constructed with a StatsManager object.
         """
+在给定的视频上使用添加的 SceneDetectors 执行场景检测，返回处理的帧数。
+可以通过调用 :meth:`get_scene_list` 或 :meth:`get_cut_list` 获取结果。
+
+视频解码在后台线程中执行，以允许场景检测和帧解码并行进行。
+检测将持续进行，直到没有剩余帧，达到指定的持续时间或结束时间，或调用了 :meth:`stop`。
+
+参数:
+    - video: 从 `scenedetect.open_video` 获取的 VideoStream，或者直接创建一个 VideoStream 对象
+      (例如 `scenedetect.backends.opencv.VideoStreamCv2`)。
+    - duration: 从当前视频位置开始检测的持续时间。如果设置了 `end_time`，则不能指定。
+    - end_time: 停止处理的时间点。如果设置了 `duration`，则不能指定。
+    - frame_skip: 不推荐使用，除非是极高帧率的视频。要跳过的帧数（即每 N+1 帧处理一次，
+      其中 N 是 frame_skip，只处理视频的 1/(N+1) 部分，以加快检测速度，但会降低准确性）。
+      使用 StatsManager 时，`frame_skip` **必须**为 0（默认值）。
+    - show_progress: 如果为 True，并且安装了 ``tqdm`` 模块，会显示带有进度、帧率和预计完成处理视频帧源所需的时间的进度条。
+    - callback: 如果设置，则在检测到每个场景/事件后调用。
+    - frame_source: [已弃用] 请勿使用。用于与早期版本兼容。
+
+返回:
+    int: 从帧源中读取和处理的帧数。
+抛出:
+    ValueError: 如果使用 StatsManager 对象构造了 SceneManager，则 `frame_skip` **必须**为 0（默认值）。
+"""
+
         # TODO(v0.7): Add DeprecationWarning that `frame_source` will be removed in v0.8.
         # TODO(v0.8): Remove default value for `video`` when removing `frame_source`.
         if frame_source is not None:
@@ -914,6 +870,27 @@ class SceneManager:
         end_time: FrameTimecode,
         out_queue: queue.Queue,
     ):
+        """
+        :class:`ContentDetector` 比较相邻帧之间的内容差异与设定的阈值/得分，如果超过了阈值，就会触发场景切换。
+
+        这个检测器可以通过命令行使用 `detect-content` 命令。
+
+        ---
+
+        以下是 `_decode_thread` 函数的说明：
+
+        该函数用于在单独的线程中解码视频帧，同时进行一些预处理操作（如降低分辨率）。
+
+        参数：
+            - video: VideoStream 对象，用于读取视频帧。
+            - frame_skip: 帧跳过的间隔。
+            - downscale_factor: 缩小因子，用于降低视频分辨率。
+            - end_time: 视频结束的时间。
+            - out_queue: 用于存储处理后的帧和位置信息的队列。
+
+        注意：
+            该函数会在视频解码过程中可能抛出异常，这些异常会在主线程中重新抛出以便处理。
+        """
         try:
             while not self._stop.is_set():
                 frame_im = None

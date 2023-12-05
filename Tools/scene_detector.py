@@ -1,16 +1,8 @@
-"""``scenedetect.scene_detector`` Module
+"""``scenedetect.scene_detector`` 模块
 
-This module contains the :class:`SceneDetector` interface, from which all scene detectors in
-:mod:`scenedetect.detectors` module are derived from.
+该模块包含了所有场景检测器在 :mod:`scenedetect.detectors` 模块中派生的 :class:`SceneDetector` 接口。
 
-The SceneDetector class represents the interface which detection algorithms are expected to provide
-in order to be compatible with PySceneDetect.
-
-.. warning::
-
-    This API is still unstable, and changes and design improvements are planned for the v1.0
-    release. Instead of just timecodes, detection algorithms will also provide a specific type of
-    event (in, out, cut, etc...).
+SceneDetector 类代表了检测算法应提供的接口，以便与 PySceneDetect 兼容。
 """
 
 from typing import List, Optional, Tuple
